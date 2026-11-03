@@ -867,7 +867,9 @@ CHEF_LIVE = r"""
       local src = f:read(e.size); f:close()
       local chunk = loadstring(src, '@' .. e.name)
       local ran, v = pcall(chunk, arg)
-      package.loaded[e.name] = ran and (v == nil and true or v) or false
+      -- Chef 1.5.1 starts a mod in its own space and leaves no entry in the game's
+      -- package.loaded (its require does, for its own look-alike only). Modelled here, because
+      -- another loader reading package.loaded to skip mods depends on it.
       starts[#starts + 1] = e.name .. (ran and '' or ':failed')
     end
   end

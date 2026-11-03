@@ -81,6 +81,10 @@ Everything else goes to Chef Shared Loader.
    is set and Chef's core runs from its archive; Chef starts every mod not
    marked, as its `docs/MODDING.md` describes. A mod that failed here is marked
    in `package.loaded`, so Chef does not try it again.
+   Chef 1.5.1 leaves no entry in `package.loaded` for a mod it starts (its own
+   require marks only its look-alike), and that is MDL3's only "already started"
+   test: every mod handed to Chef is therefore marked `true` here, or MDL3 would
+   run it a second time.
 3. MDL3's own boot runs after Chef, as one link named `mods/mdl3/mdl3`. It is
    found by its `boot` row or, when a deployer has moved it off the slot, as a
    guest boot whose text says `-- MDL3 <version> game boot`. It starts an addon

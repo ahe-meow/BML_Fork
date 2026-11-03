@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.3"
+local MARKER = "boot-mod-loader-0.14.4"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -2435,6 +2435,17 @@ local function start_chef(list, guests, clock0)
   say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3)", #L.for_chef, #mdl))
   local handed, why = pcall(L.hand_off, true)
   if not handed then say("hand-off to Chef Shared Loader: " .. tostring(why)) end
+  -- Chef 1.5.1 starts a mod in its own space and leaves no entry in package.loaded (its own
+  -- require marks only its look-alike). MDL3's only "already started" test is package.loaded, so
+  -- without this it runs every mod Chef just ran a second time. The marker is true: Chef ran them.
+  if handed then
+    local P = rawget(_G, "package")
+    if type(P) == "table" and type(P.loaded) == "table" then
+      for _, e in ipairs(L.for_chef) do
+        if P.loaded[e.name] == nil then P.loaded[e.name] = true end
+      end
+    end
+  end
   if #mdl > 0 and rawget(_G, "ChefSharedLoader") ~= nil then host_mdl3(chunk, mdl, clock0) end
   for _, entry in ipairs(guests or {}) do
     if entry ~= L.mdl3 then                      -- MDL3 already ran, as its own host
