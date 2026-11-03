@@ -82,8 +82,9 @@ With Chef Shared Loader's core deployed, Boot Mod Loader starts no mod itself:
    `loaded`, or `load failed`.
 4. Boot Mod Loader's Mod Options Menu and Mod Bindings Menu are **not**
    installed in this mode: Chef sets its own, and the settings are in its F9
-   menu. Nothing is written to `mom_*` / `mbm_*`, so HD2 Mod Setting GUI shows
-   no list for these mods.
+   menu. Nothing is written to `mom_*` / `mbm_*`; lists an earlier 0.13 launch
+   left behind are renamed `.stale`, so HD2 Mod Setting GUI shows only current
+   settings.
 5. Chef's, MDL3's and the game's callbacks run in that order: MDL3, Chef, then
    the chain below (per-mod timers such as Mod Lag Watchdog can name both).
 

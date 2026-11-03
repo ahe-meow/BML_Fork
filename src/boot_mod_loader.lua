@@ -69,7 +69,8 @@
 -- package.loaded holds (the mods that failed here get false there, so they
 -- do not fail twice). Its own ModOptionsMenu / ModBindingsMenu are set only
 -- where none is (read in 1.2.1's source), so the mods here keep the settings
--- window; the mods it starts use its F9 menu. Proven in game 2026-10-26.
+-- window; the mods it starts use its F9 menu. (0.13.x only: in 0.14.0 chef mode
+-- this loader installs no menus at all, see below.) Proven in game 2026-10-26.
 -- Since 0.13.2 the game's callbacks are off while it loads, so it takes over
 -- no chain (it would hold the chain in its own tables, where Mod Lag Watchdog
 -- cannot follow it, and show everything below as "core_1"); this loader puts
@@ -265,7 +266,8 @@ if rawget(_G, "CowboyBingusModLoader") == nil then
   rawset(_G, "CowboyBingusModLoader", {
     version = 17, api = 1, revision = MARKER,
     -- 0.14.0: Chef reads this to see what another loader started, or is about to (its own
-    -- "Mods you start" rule: a mod found here is not started again). See mdl_claim below.
+    -- "Mods you start" rule: a mod found here is not started again). start_chef marks the mods
+    -- that MDL3 will run, so Chef leaves those to it.
     modules = {},
     capabilities = { after_startup = true, on_shutdown = true, open_log = true, mod_options = true, mod_bindings = true, ffi = false, jit = false },
     game = game,
@@ -2280,7 +2282,7 @@ function L.hand_off(force)
         if make == nil then say("Chef Shared Loader's link: " .. tostring(problem)) else rawset(_G, k, make(previous, g, k)) end
       end
     end
-    say(string.format("handed off to Chef Shared Loader (%s) for %d mod(s) made for it: %s; it runs as one link (%s)",
+    say(string.format("handed off to Chef Shared Loader (%s) for %d mod(s): %s; it runs as one link (%s)",
                       where, #names, table.concat(names, ", "), table.concat(kept, ", ")))
   else
     rawset(_G, "ChefSharedLoaderHandoff", nil)
@@ -2380,6 +2382,8 @@ local function start_chef(list, guests, clock0)
   -- Chef sets its own menus only where none is; the settings of these mods go to its F9
   rawset(_G, "ModOptionsMenu", nil)
   rawset(_G, "ModBindingsMenu", nil)
+  -- lists an earlier 0.13 launch wrote are set aside: no mod registers with them in this mode
+  pcall(MOM.sweep, list)
   say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3)", #L.for_chef, #mdl))
   local handed, why = pcall(L.hand_off, true)
   if not handed then say("hand-off to Chef Shared Loader: " .. tostring(why)) end
