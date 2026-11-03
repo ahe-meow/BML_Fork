@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.0"
+local MARKER = "boot-mod-loader-0.14.1"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -201,7 +201,12 @@ local function declared_in(file)
             found[#found + 1] = { name = name, at = at + 8, size = u32(first, 0) }
           else
             local guest = string.match(string.sub(first, 9), "^%-%- HD2%-Guest%-Boot: ([^\r\n]+)\r?\n")
-            if guest ~= nil then found[#found + 1] = { name = guest, at = at + 8, size = u32(first, 0), guest = true } end
+            if guest ~= nil then
+              -- a deployer moves MDL3's own boot off the slot too (its first line is added, the
+              -- next one is still "-- MDL3 <version> game boot"), so it is found here as well
+              local mdl3 = string.find(string.sub(first, 9, 400), "-- MDL3 ", 1, true) ~= nil
+              found[#found + 1] = { name = guest, at = at + 8, size = u32(first, 0), guest = true, mdl3 = mdl3 }
+            end
           end
         end
       end
@@ -228,8 +233,14 @@ local function discover()
         for _, entry in ipairs(found) do
           entry.patch, entry.path = n, path
           if entry.chef_core then L.chef_core = entry                       -- a higher patch wins
-          elseif entry.mdl3 then L.mdl3 = entry                            -- a higher patch wins
-          else by_name[(entry.guest and "guest:" or "") .. entry.name] = entry end
+          else
+            if entry.mdl3 then L.mdl3 = entry end                          -- a higher patch wins too
+            if entry.guest then
+              by_name["guest:" .. entry.name] = entry                      -- legacy still runs it as a guest
+            elseif not entry.mdl3 then
+              by_name[entry.name] = entry
+            end
+          end
         end
       else
         say("patch_" .. n .. ": " .. tostring(ok2 and why or found))
@@ -2052,13 +2063,27 @@ local function for_chef(source)
   return ok and chef_only
 end
 
--- A mod that says it needs MDL3: "-- HD2-Requires: mdl3" (MDL3 ignores a requirement it does not
--- know, Chef reads it as unmet) or "-- @loader mdl". The header only, like Chef's own rule.
--- ponytail: first 1200 bytes, no version compare; nobody asked for one.
+-- Why a mod is MDL3's, or nil. Four answers, in this order:
+--   * its header asks for it: "-- HD2-Requires: mdl3" (MDL3 ignores a requirement it does not know,
+--     Chef reads it as unmet) or "-- @loader mdl";
+--   * Chef would not read it at all: its core skips a Lua resource over 4 MB ("Lua resource(s) over
+--     4 MB not read"), so a big mod can only run here;
+--   * it says so: "MDL3" in its first 1200 bytes (the builds for it do: "MDL3 build", "(game VM
+--     entry, MDL3)", "MDL3 dev.32+ ...");
+--   * it takes MDL3's context table: "local context = ..." or "local ctx = ..." as its first line.
+-- ponytail: first 1200 bytes, no version compare; the log names the reason for every mod.
+local CHEF_MAX_LUA = 4 * 1024 * 1024
 local function is_mdl(source)
   local head = string.sub(source, 1, 1200)
-  return string.find(head, "\n%-%- HD2%-Requires: mdl3[%s>]") ~= nil
-      or string.find(head, "\n%-%- @loader mdl3?[%s]") ~= nil
+  if string.find(head, "\n%-%- HD2%-Requires: mdl3[%s>]") or string.find(head, "\n%-%- @loader mdl3?[%s]") then
+    return "asks for it"
+  end
+  if #source > CHEF_MAX_LUA then return "over Chef's 4 MB" end
+  if string.find(head, "MDL3", 1, true) then return "names MDL3" end
+  if string.find(head, "\nlocal%s+context%s*=%s*%.%.%.") or string.find(head, "\nlocal%s+ctx%s*=%s*%.%.%.") then
+    return "takes MDL3's context"
+  end
+  return nil
 end
 
 local function read_source(entry)
@@ -2346,19 +2371,23 @@ end
 -- need MDL3 go to it, the rest to Chef — and Chef is handed the game with those names already
 -- marked in its table, so it leaves them alone.
 local function start_chef(list, guests, clock0)
-  local mdl, others = {}, {}
+  local mdl = {}
   for _, e in ipairs(list) do
     local source, why = read_source(e)
     if source == nil then
       e.state = "unreadable"
       say(e.name .. ": " .. why)
-    elseif is_mdl(source) then
-      e.state = "mdl"
-      mdl[#mdl + 1] = e
-      if for_chef(source) then say(e.name .. ": both markers; MDL3 has it") end
     else
-      e.state = "for chef"
-      L.for_chef[#L.for_chef + 1] = e
+      local mdl_why = is_mdl(source)
+      if mdl_why ~= nil then
+        e.state = "mdl"
+        mdl[#mdl + 1] = e
+        say(e.name .. ": MDL3 (" .. mdl_why .. ")")
+        if for_chef(source) then say(e.name .. ": both markers; MDL3 has it") end
+      else
+        e.state = "for chef"
+        L.for_chef[#L.for_chef + 1] = e
+      end
     end
   end
   local chunk = nil
@@ -2389,8 +2418,10 @@ local function start_chef(list, guests, clock0)
   if not handed then say("hand-off to Chef Shared Loader: " .. tostring(why)) end
   if #mdl > 0 and rawget(_G, "ChefSharedLoader") ~= nil then host_mdl3(chunk, mdl, clock0) end
   for _, entry in ipairs(guests or {}) do
-    local ok2, w = pcall(run_guest, entry)
-    if not ok2 then say("guest boot " .. tostring(entry.name) .. ": " .. tostring(w)) end
+    if entry ~= L.mdl3 then                      -- MDL3 already ran, as its own host
+      local ok2, w = pcall(run_guest, entry)
+      if not ok2 then say("guest boot " .. tostring(entry.name) .. ": " .. tostring(w)) end
+    end
   end
   for _, fn in ipairs(after_startup) do
     local ok2, w = pcall(fn)

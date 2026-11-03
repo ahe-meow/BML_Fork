@@ -82,7 +82,7 @@
 
 1. 路由可行：BML 当 boot → 分类 → 先把 mdl 组写进 `CowboyBingusModLoader.modules[name]="loading"` 让 Chef 跳过 → 交接给 Chef → Chef 启动其余 mod 并写 `package.loaded` → 最后托管 MDL3 的 boot chunk，它只会真正启动还没被启动的那些。
 2. MDL3 在顶层把 `init/update/render/shutdown` 全设成自己的 → 必须按 guest 方式托管（保存现有链，收编成一条具名 link，调一次它的 `init`）。
-3. 声明用 `-- HD2-Requires: mdl3`：MDL3 忽略未知名字，Chef 视为未满足依赖；BML 自己读头 1200 字节做判定，并在交接前给 mdl 组打 `modules` 标记（不依赖两个加载器的解析器）。
+3. 判定（0.14.1，2026-11-03 实机验证后调整）：`-- HD2-Requires: mdl3` / `-- @loader mdl`；脚本 > 4 MB（Chef 的核 `MAX_LUA = 4*1024*1024`，超过直接不读）；头 1200 字节含 `MDL3`；首行 `local context = ...` / `local ctx = ...`（MDL3 给 addon 的上下文表）。日志按 mod 打印理由。**不再只看声明**：BFV Kill Feedback（30.5 MB，头部无声明）实机在 Chef 下不生效，只能靠大小判定。
 4. `chef` 模式下 BML 不应再注入自己的 `ModOptionsMenu` / `ModBindingsMenu`，交接前清空这两个全局即可让 Chef 装自己的 F9 菜单。
 
 ## 8. 仍未验证（只能进游戏）

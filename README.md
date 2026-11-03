@@ -62,12 +62,17 @@ F9 menu instead; the window lists are not written then (see below).
 
 ## Which loader runs which mods
 
-With Chef Shared Loader's core deployed, Boot Mod Loader starts no mod itself:
+With Chef Shared Loader's core deployed, Boot Mod Loader starts no mod itself.
+A mod goes to MDL3 when any of these is true (the log names which):
 
-| the mod, in its first 1200 bytes | runs under |
+| the mod | why MDL3 |
 |---|---|
-| `-- HD2-Requires: mdl3` or `-- @loader mdl` | MDL3 |
-| anything else (Chef-only, plain, both menus) | Chef Shared Loader |
+| says `-- HD2-Requires: mdl3` or `-- @loader mdl` in its first 1200 bytes | it asks for it |
+| is a Lua resource over 4 MB | Chef does not read one ("Lua resource(s) over 4 MB not read") |
+| says `MDL3` in its first 1200 bytes (`MDL3 build`, `(game VM entry, MDL3)`) | the builds for it do |
+| starts with `local context = ...` or `local ctx = ...` | MDL3 hands its addons a context table |
+
+Everything else goes to Chef Shared Loader.
 
 1. Every mod is read once, and the MDL3 ones are marked `loading` in
    `CowboyBingusModLoader.modules` before Chef loads.
@@ -75,11 +80,12 @@ With Chef Shared Loader's core deployed, Boot Mod Loader starts no mod itself:
    is set and Chef's core runs from its archive; Chef starts every mod not
    marked, as its `docs/MODDING.md` describes. A mod that failed here is marked
    in `package.loaded`, so Chef does not try it again.
-3. MDL3's own `boot` chunk (found by its first line, `-- MDL3 <version> game
-   boot`) runs after Chef, as one link named `mods/mdl3/mdl3`. It starts an
-   addon with `require`: everything Chef started is already in
-   `package.loaded`, so only the marked mods really run. Their mark becomes
-   `loaded`, or `load failed`.
+3. MDL3's own boot runs after Chef, as one link named `mods/mdl3/mdl3`. It is
+   found by its `boot` row or, when a deployer has moved it off the slot, as a
+   guest boot whose text says `-- MDL3 <version> game boot`. It starts an addon
+   with `require`: everything Chef started is already in `package.loaded`, so
+   only the marked mods really run. Their mark becomes `loaded`, or `load
+   failed`.
 4. Boot Mod Loader's Mod Options Menu and Mod Bindings Menu are **not**
    installed in this mode: Chef sets its own, and the settings are in its F9
    menu. Nothing is written to `mom_*` / `mbm_*`; lists an earlier 0.13 launch
@@ -105,25 +111,28 @@ not started.
 
 ### Mods made for MDL3
 
-MDL3 (Mod Dynamic Loader) is a preview loader with its own native bridge. A mod
-asks for it with `-- HD2-Requires: mdl3` (or `-- @loader mdl`) among its first
-lines; MDL3 itself ignores a requirement it does not know, and Chef reads it as
+MDL3 (Mod Dynamic Loader) is a preview loader with its own native bridge. Its
+mods are ordinary `-- HD2-Addon:` scripts; what marks one is in the table at the
+top of this section. `-- HD2-Requires: mdl3` (or `-- @loader mdl`) is the
+explicit form: MDL3 ignores a requirement it does not know, and Chef reads it as
 unmet.
 
-- MDL3 is deployed like any other mod (its `boot` row is not the game's slot —
-  Boot Mod Loader's is) and its `mdl_native_bridge.dll` must be installed, which
-  its own `INSTALL.bat` does.
+- MDL3 may be the game's `boot` or, as HD2 Mod Quick Deploy deploys it, a guest
+  boot moved off the slot; both are found. Its `mdl_native_bridge.dll` must be
+  installed, which its own `INSTALL.bat` does.
 - Its ESC menu and its own mod list are MDL3's business; Boot Mod Loader only
-  runs its boot chunk after Chef and marks what it ran.
+  runs its boot after Chef and marks what it ran.
 - A mod that names both loaders runs under MDL3, and the log says so
   (`both markers; MDL3 has it`).
+- The four rules are heuristics on a header, not a contract: the log prints the
+  reason for every mod (`<name>: MDL3 (<reason>)`), so a wrong call is visible.
 
 Known limits, until checked in game:
 
 - whether MDL3 starts only the addons its own menu shows as ON;
 - whether its native bridge and ESC menu work when it is not the game's `boot`;
-- Chef's own answer for a requirement it does not know (`mdl3`): the log should
-  say it is not installed.
+- a mod that neither says `MDL3` nor takes a context table stays with Chef even
+  if it was built for MDL3; rename its header or add `-- HD2-Requires: mdl3`.
 
 ### Guest boots
 
