@@ -821,67 +821,152 @@ CHEF_CORE_SRC = r"""
 """
 
 
-def check_chef_handoff(source, failures):
-    """0.13.0: a mod made for Chef Shared Loader (HD2-Requires, or local chef = ... used untested) is not run; with
-    Chef's core deployed, the loader hands off to it (its documented note, phase init) and Chef would start exactly
-    those; one that tests for chef runs here; a failed mod is marked so Chef does not start it again; without the
-    core the mods are named and left."""
+def check_bml_legacy(source, failures):
+    """Without Chef's core the old path is untouched: a mod made for Chef Shared Loader
+    (HD2-Requires, or local chef = ... used untested) is not run and is named in the log; the
+    others run here, one that tests for chef too. Chef mode itself is check_routing's."""
     root = tempfile.mkdtemp(prefix="bootloader_chef_")
     try:
-        from build import write_module
         fake_game(root, CHEF_MODS)
         core = os.path.join(root, "game", "data", "9ba626afa44a3aa3.patch_6")
-        for here in (True, False):
+        for ext in ("", ".gpu_resources", ".stream"):
+            if os.path.exists(core + ext): os.remove(core + ext)
+        rt = runtime(root, CHECKED)
+        # as in game: can_get says no, whether the core is there or not
+        rt.execute("stingray.Application.can_get = function(kind, name) return false end")
+        rt.execute("GAME_UPS = 0 update = function() GAME_UPS = GAME_UPS + 1 end GAME_UPDATE = update")
+        rt.eval("loadstring")(source, "=boot")()
+        rt.execute("init()")
+        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"), encoding="utf-8").read()
+        log = log[log.rindex("== boot-mod-loader-"):]
+        ok(rt.eval("NARROW_RAN") is None and rt.eval("DECLARED_RAN") is None and rt.eval("MODULAR_RAN") is None,
+           "legacy: the mods made for Chef are not run here", failures)
+        ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("COPES_QUIET") is True,
+           "legacy: the others run, one that tests for chef too", failures)
+        ok("started 2 of 3 mods" in log,
+           "legacy: counted without them (alpha and copes; broken fails): %r" % [l for l in log.splitlines() if "started" in l], failures)
+        ok(rt.eval("CHEF_FROM") is None and "made for Chef Shared Loader, which is not deployed: not started (mods/test/narrow, mods/test/declared, mods/test/modular)" in log,
+           "legacy: without its core, named and left", failures)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+CHEF_LIVE = r"""
+  local via = ...
+  CHEF_VIA = via
+  local note = rawget(_G, 'ChefSharedLoaderHandoff')
+  CHEF_FROM, CHEF_PHASE = note and note.from, note and note.phase
+  MOM_AT_LOAD = rawget(_G, 'ModOptionsMenu')
+  local modules = rawget(_G, 'CowboyBingusModLoader')
+  local arg = { own_log = function() end }
+  local starts = {}
+  for _, e in ipairs(__boot_mod_loader.mods) do
+    local marked = modules and modules.modules and modules.modules[e.name]
+    if e.state ~= 'loaded' and marked == nil and package.loaded[e.name] == nil then
+      local f = io.open(e.path, 'rb'); f:seek('set', e.at)
+      local src = f:read(e.size); f:close()
+      local chunk = loadstring(src, '@' .. e.name)
+      local ran, v = pcall(chunk, arg)
+      package.loaded[e.name] = ran and (v == nil and true or v) or false
+      starts[#starts + 1] = e.name .. (ran and '' or ':failed')
+    end
+  end
+  CHEF_STARTS = table.concat(starts, ',')
+  rawset(_G, 'ChefSharedLoader', {})
+  function init() CHEF_INITS = (CHEF_INITS or 0) + 1 end
+  function update(dt) CHEF_UPS = (CHEF_UPS or 0) + 1 end
+  function render() CHEF_RENDERS = (CHEF_RENDERS or 0) + 1 end
+  function shutdown() ORDER = ORDER .. 'chef,' end
+  init()
+"""
+
+MDL3_FAKE = r"""-- MDL3 3.0.0-dev.28 game boot (stand-in: same start path as the real one)
+local starts = {}
+for _, e in ipairs(__boot_mod_loader.mods) do
+  local ok2, v = pcall(require, e.name)
+  if not ok2 and package.loaded[e.name] == nil then
+    local f = io.open(e.path, 'rb'); f:seek('set', e.at)
+    local src = f:read(e.size); f:close()
+    local chunk = loadstring(src, '@' .. e.name)
+    local ran, val = pcall(chunk)
+    package.loaded[e.name] = ran and (val == nil and true or val) or false
+    if ran then starts[#starts + 1] = e.name end
+  end
+end
+MDL_STARTS = table.concat(starts, ',')
+function init() MDL_INITS = (MDL_INITS or 0) + 1 end
+function update(dt) MDL_UPS = (MDL_UPS or 0) + 1 end
+function render() MDL_RENDERS = (MDL_RENDERS or 0) + 1 end
+function shutdown() ORDER = ORDER .. 'mdl3,' end
+"""
+
+ROUTE_MODS = {
+    1: ("mods/test/alpha", MODS[1][1], 2),
+    2: ("mods/test/narrow", CHEF_MODS[2][1], 2),
+    3: ("mods/test/mdl", "-- HD2-Addon: mods/test/mdl\n-- HD2-Requires: mdl3\nMDL_RAN = (MDL_RAN or 0) + 1\n", 2),
+    4: ("mods/test/broken", MODS[2][1], 2),
+    5: ("mods/test/dual", "-- HD2-Addon: mods/test/dual\n-- HD2-Requires: chef-shared-loader\n"
+                          "-- HD2-Requires: mdl3\nDUAL_RAN = true\n", 2),
+}
+
+
+def check_routing(source, failures):
+    """0.14.0: with Chef in the game nothing is run here. Mods that say they need MDL3 are marked
+    in the Bingus table before the hand-off, Chef leaves them alone, and MDL3 is hosted as one
+    link afterwards; it starts only those, because everything Chef started is in package.loaded."""
+    from build import write_module
+    for here in (True, False):
+        root = tempfile.mkdtemp(prefix="bootloader_route_")
+        try:
+            fake_game(root, ROUTE_MODS)
+            data = os.path.join(root, "game", "data")
+            write_module(data, "mods/chef_shared_loader/core_1", CHEF_LIVE, archive="9ba626afa44a3aa3.patch_6")
             if here:
-                write_module(os.path.join(root, "game", "data"), "mods/chef_shared_loader/core_1", CHEF_CORE_SRC, archive="9ba626afa44a3aa3.patch_6")
-            else:
-                for ext in ("", ".gpu_resources", ".stream"):
-                    if os.path.exists(core + ext): os.remove(core + ext)
+                write_module(data, "boot", MDL3_FAKE, archive="9ba626afa44a3aa3.patch_9")
             rt = runtime(root, CHECKED)
-            # as in game: can_get says no, whether the core is there or not
             rt.execute("stingray.Application.can_get = function(kind, name) return false end")
             rt.execute("GAME_UPS = 0 update = function() GAME_UPS = GAME_UPS + 1 end GAME_UPDATE = update")
             rt.eval("loadstring")(source, "=boot")()
             rt.execute("init()")
-            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"), encoding="utf-8").read()
+            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+                       encoding="utf-8").read()
             log = log[log.rindex("== boot-mod-loader-"):]
-            tag = "chef here" if here else "no chef"
-            ok(rt.eval("NARROW_RAN") is None and rt.eval("DECLARED_RAN") is None and rt.eval("MODULAR_RAN") is None,
-               "chef (%s): the mods made for it are not run here" % tag, failures)
-            ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("COPES_QUIET") is True,
-               "chef (%s): the others run, one that tests for chef too" % tag, failures)
-            ok("started 2 of 3 mods" in log, "chef (%s): counted without them (alpha and copes; broken fails): %r" % (tag, [l for l in log.splitlines() if "started" in l]), failures)
+            tag = "mdl3 here" if here else "no mdl3"
+            ok(("routing: chef (3 mod(s) for Chef, 2 for MDL3)" if here else "routing: chef (5 mod(s) for Chef, 0 for MDL3)") in log,
+               "routing (%s): the log says who gets what: %r" % (tag, [l for l in log.splitlines() if "routing" in l]), failures)
+            ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("NARROW_RAN") is True,
+               "routing (%s): BML runs no mod itself; Chef started the plain and the chef one" % tag, failures)
+            ok(rt.eval("MOM_AT_LOAD") is None, "routing (%s): Chef loads with no menu of ours in the way" % tag, failures)
+            files = os.listdir(os.path.join(root, "appdata", "Arrowhead", "Helldivers2"))
+            ok(not any(f.startswith(("mom_", "mbm_")) for f in files),
+               "routing (%s): no window lists are written in chef mode: %r" % (tag, files), failures)
+            ok(rt.eval("debug.getinfo(update, 'S').source") == "@mods/mdl3/mdl3"
+               if here else rt.eval("debug.getinfo(update, 'S').source") == "@mods/chef_shared_loader/chef_shared_loader",
+               "routing (%s): the top link is the loader that runs%r" % (tag, rt.eval("debug.getinfo(update, 'S').source")), failures)
+            starts = rt.eval("CHEF_STARTS")
             if here:
-                # 0.13.2: Chef takes over no chain; it is one link, named for Mod Lag Watchdog
-                ok(rt.eval("CHEF_FOUND") is False, "chef: it found no callbacks to take over", failures)
-                ok(rt.eval("debug.getinfo(update, 'S').source") == "@mods/chef_shared_loader/chef_shared_loader"
-                   and rt.eval("debug.getinfo(render, 'S').source") == "@mods/chef_shared_loader/chef_shared_loader",
-                   "chef: its link is named chef_shared_loader: %r" % rt.eval("debug.getinfo(update, 'S').source"), failures)
-                held = rt.eval("(function() local n, i = {}, 1 while true do local name, v = debug.getupvalue(update, i) "
-                               "if name == nil then break end if type(v) == 'function' then n[#n + 1] = name end i = i + 1 end "
-                               "return table.concat(n, ',') end)()")
-                ok(held == "previous", "chef: its link holds one function, the chain: %r" % held, failures)
-                rt.execute("update(0.016) update(0.016) pcall(render)")
-                ok(rt.eval("CHEF_UPS") == 2 and rt.eval("GAME_UPS") == 2 and rt.eval("CHEF_RENDERS") == 1 and rt.eval("CHEF_INITS") == 1,
-                   "chef: its update and render run, the chain's too, its init once: %r %r %r %r"
-                   % (rt.eval("CHEF_UPS"), rt.eval("GAME_UPS"), rt.eval("CHEF_RENDERS"), rt.eval("CHEF_INITS")), failures)
+                ok(starts == "mods/test/alpha,mods/test/narrow,mods/test/broken:failed",
+                   "routing: Chef starts the rest, not the two marked for MDL3: %r" % starts, failures)
+                ok(rt.eval("MDL_STARTS") == "mods/test/mdl,mods/test/dual" and rt.eval("MDL_RAN") == 1 and rt.eval("DUAL_RAN") is True,
+                   "routing: MDL3 starts exactly the marked ones: %r" % rt.eval("MDL_STARTS"), failures)
+                ok(rt.eval("CowboyBingusModLoader.modules['mods/test/mdl']") == "loaded"
+                   and rt.eval("CowboyBingusModLoader.modules['mods/test/alpha']") is None,
+                   "routing: the mark is 'loaded' after MDL3 ran it", failures)
+                ok("both markers; MDL3 has it" in log, "routing: a mod with both markers is named", failures)
+                ok(rt.eval("MDL_INITS") == 1 and rt.eval("CHEF_INITS") == 1,
+                   "routing: one init each: %r %r" % (rt.eval("CHEF_INITS"), rt.eval("MDL_INITS")), failures)
+                rt.execute("update(0.016) update(0.016)")
+                ok(rt.eval("MDL_UPS") == 2 and rt.eval("GAME_UPS") == 2,
+                   "routing: MDL3's update runs, then the chain: %r %r" % (rt.eval("MDL_UPS"), rt.eval("GAME_UPS")), failures)
                 rt.execute("ORDER = '' shutdown()")
-                ok(rt.eval("ORDER") == "chef,game,", "chef: shutdown: Chef, then the game's: %r" % rt.eval("ORDER"), failures)
-                rt.execute("init()")
-                ok(rt.eval("CHEF_INITS") == 1, "chef: init again (the engine's) does not call Chef's init", failures)
-                ok(rt.eval("CHEF_FROM") == "Boot Mod Loader " + __import__("build").VERSION and rt.eval("CHEF_PHASE") == "init" and rt.eval("CHEF_VIA") == "mods/chef_shared_loader/core_1",
-                   "chef: the hand-off note: %r %r" % (rt.eval("CHEF_FROM"), rt.eval("CHEF_PHASE")), failures)
-                ok(rt.eval("CHEF_STARTS") == "mods/test/narrow,mods/test/declared,mods/test/modular",
-                   "chef: it would start exactly those: %r" % rt.eval("CHEF_STARTS"), failures)
-                ok(rt.eval("CHEF_BROKEN_MARK") == "false", "chef: a mod that failed here is not started there again", failures)
-                ok("handed off to Chef Shared Loader (patch_6) for 3 mod(s) made for it: mods/test/narrow, mods/test/declared, mods/test/modular; it runs as one link (update, render, shutdown)" in log
-                   and rt.eval("package.loaded['mods/chef_shared_loader/core_1']") is True,
-                   "chef: the log says the hand-off", failures)
+                ok(rt.eval("ORDER") == "mdl3,chef,game,", "routing: shutdown: MDL3, then the game's: %r" % rt.eval("ORDER"), failures)
             else:
-                ok(rt.eval("CHEF_FROM") is None and "made for Chef Shared Loader, which is not deployed: not started (mods/test/narrow, mods/test/declared, mods/test/modular)" in log,
-                   "chef: without its core, named and left", failures)
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+                ok("MDL3 not deployed: mods/test/mdl, mods/test/dual (Chef starts them)" in log,
+                   "routing: without MDL3 the log names them", failures)
+                ok("mods/test/mdl" in starts and "mods/test/dual" in starts and rt.eval("MDL_RAN") == 1,
+                   "routing: without MDL3 Chef starts them, once: %r %r" % (starts, rt.eval("MDL_RAN")), failures)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def check(source):
@@ -975,7 +1060,8 @@ def check(source):
         check_no_menu_limits(source, failures)
         check_translation_pack(source, failures)
         check_guest_boot(source, failures)
-        check_chef_handoff(source, failures)
+        check_bml_legacy(source, failures)
+        check_routing(source, failures)
     finally:
         shutil.rmtree(root, ignore_errors=True)
         shutil.rmtree(other, ignore_errors=True)

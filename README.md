@@ -15,8 +15,11 @@ That update changed how the game runs Lua:
   the engine calls `init`, `update` and `render`.
 
 Boot Mod Loader replaces `boot`. It runs the game's own boot bytecode first,
-unchanged. When the engine calls `init`, it starts every mod that declares
-itself the Bingus Shared Loader way.
+unchanged.
+
+Since 0.14.0 it is a **router** when Chef Shared Loader is deployed: every mod
+goes to Chef, except the ones that declare they need MDL3 (Mod Dynamic Loader),
+which MDL3 starts. With no Chef core it starts the mods itself, as before.
 
 ## For players
 
@@ -25,16 +28,19 @@ use. It needs no settings.
 
 For the settings of mods made for Mod Options Menu and Mod Bindings Menu, use
 [HD2 Mod Setting GUI](https://github.com/pat-pat-patrick/hd2-mod-setting-gui)
-**1.12.0 or newer**.
+**1.12.0 or newer**. In chef mode the settings of those mods are in Chef's own
+F9 menu instead; the window lists are not written then (see below).
 
 - Its log is `%APPDATA%\Arrowhead\Helldivers2\boot_mod_loader.log`. The log
-  lists the archives read, every mod found, and whether each mod loaded, did not
-  compile, or failed (with a traceback).
+  lists the archives read, every mod found, who gets it (`routing: chef (...)`),
+  and whether each mod loaded, did not compile, or failed (with a traceback).
 - **Only one mod can replace `boot`.** The game runs one `boot`: the one in the
-  highest patch. Boot Mod Loader's must be that one. Two cases are handled
+  highest patch. Boot Mod Loader's must be that one. Three cases are handled
   (see "Other loaders and boots" below):
-  - **Chef Shared Loader** may be installed beside it: mods made only for Chef
-    are handed to Chef, which then runs inside Boot Mod Loader.
+  - **Chef Shared Loader** may be installed beside it: it runs every mod that is
+    not for MDL3, and Boot Mod Loader hands it the game.
+  - **MDL3** may be installed beside it: it runs the mods that say they need it,
+    as one link after Chef.
   - **A mod that ships its own `boot`** but is not a loader (Objective Tracker
     0.6.7) runs as a guest when the mod manager has moved its `boot` aside.
     [HD2 Mod Quick Deploy](https://github.com/pat-pat-patrick/hd2-mod-cli) does
@@ -54,35 +60,69 @@ For the settings of mods made for Mod Options Menu and Mod Bindings Menu, use
   includes mods that use `ffi` to read game memory, mods that use the `bit`
   library, and mods that use `goto`. The log says which mods failed and why.
 
-## Other loaders and boots
+## Which loader runs which mods
+
+With Chef Shared Loader's core deployed, Boot Mod Loader starts no mod itself:
+
+| the mod, in its first 1200 bytes | runs under |
+|---|---|
+| `-- HD2-Requires: mdl3` or `-- @loader mdl` | MDL3 |
+| anything else (Chef-only, plain, both menus) | Chef Shared Loader |
+
+1. Every mod is read once, and the MDL3 ones are marked `loading` in
+   `CowboyBingusModLoader.modules` before Chef loads.
+2. `ChefSharedLoaderHandoff = { from = "Boot Mod Loader <version>", phase = "init" }`
+   is set and Chef's core runs from its archive; Chef starts every mod not
+   marked, as its `docs/MODDING.md` describes. A mod that failed here is marked
+   in `package.loaded`, so Chef does not try it again.
+3. MDL3's own `boot` chunk (found by its first line, `-- MDL3 <version> game
+   boot`) runs after Chef, as one link named `mods/mdl3/mdl3`. It starts an
+   addon with `require`: everything Chef started is already in
+   `package.loaded`, so only the marked mods really run. Their mark becomes
+   `loaded`, or `load failed`.
+4. Boot Mod Loader's Mod Options Menu and Mod Bindings Menu are **not**
+   installed in this mode: Chef sets its own, and the settings are in its F9
+   menu. Nothing is written to `mom_*` / `mbm_*`, so HD2 Mod Setting GUI shows
+   no list for these mods.
+5. Chef's, MDL3's and the game's callbacks run in that order: MDL3, Chef, then
+   the chain below (per-mod timers such as Mod Lag Watchdog can name both).
+
+Without Chef's core the old path is unchanged: Boot Mod Loader starts every
+mod, and the mods that need Chef are named in the log and left. Without MDL3
+deployed, a mod marked for it is named in the log (`MDL3 not deployed: ...`)
+and Chef starts it.
 
 ### Mods made for Chef Shared Loader
 
 A mod made only for [Chef Shared Loader](https://github.com/Th3chef/Chef-Shared-Loader)
-is not run by Boot Mod Loader. It counts as one when, in its first 1200 bytes,
-it declares `-- HD2-Requires: chef-shared-loader`, or takes `local chef = ...`
-and uses `chef` without checking that it is there. Checks in comments and
-strings, and checks of a `chef` that an inner function declares itself, do not
-count.
+counts as one when, in its first 1200 bytes, it declares
+`-- HD2-Requires: chef-shared-loader`, or takes `local chef = ...` and uses
+`chef` without checking that it is there. Checks in comments and strings, and
+checks of a `chef` that an inner function declares itself, do not count.
+In chef mode it is simply Chef's; without Chef's core it is named in the log and
+not started.
 
-When Chef Shared Loader's core is deployed (its archive is in the game folder),
-Boot Mod Loader hands those mods to it, after every other mod has started, as
-Chef's `docs/MODDING.md` ("For other loaders") describes:
+### Mods made for MDL3
 
-1. It sets `ChefSharedLoaderHandoff = { from = "Boot Mod Loader <version>", phase = "init" }`
-   and runs Chef's core from its archive.
-2. Chef starts only the mods that are not started yet. A mod that failed here
-   is marked in `package.loaded`, so Chef does not start it again.
-3. Chef takes over no callbacks: it runs as one link in `update`, `render` and
-   `shutdown`, before the chain below it, under the name
-   `mods/chef_shared_loader/chef_shared_loader` (so per-mod timers such as Mod
-   Lag Watchdog can name it and measure the chain below).
-4. Chef sets its own Mod Options Menu and Mod Bindings Menu only when none
-   exist, so the settings of the mods started here stay in the settings window.
+MDL3 (Mod Dynamic Loader) is a preview loader with its own native bridge. A mod
+asks for it with `-- HD2-Requires: mdl3` (or `-- @loader mdl`) among its first
+lines; MDL3 itself ignores a requirement it does not know, and Chef reads it as
+unmet.
 
-Without Chef's core, the log names those mods and they are not started. Boot
-Mod Loader's `boot` must still be the one that runs (a higher patch than
-Chef's). Checked with Chef Shared Loader 1.2.1 in game.
+- MDL3 is deployed like any other mod (its `boot` row is not the game's slot —
+  Boot Mod Loader's is) and its `mdl_native_bridge.dll` must be installed, which
+  its own `INSTALL.bat` does.
+- Its ESC menu and its own mod list are MDL3's business; Boot Mod Loader only
+  runs its boot chunk after Chef and marks what it ran.
+- A mod that names both loaders runs under MDL3, and the log says so
+  (`both markers; MDL3 has it`).
+
+Known limits, until checked in game:
+
+- whether MDL3 starts only the addons its own menu shows as ON;
+- whether its native bridge and ESC menu work when it is not the game's `boot`;
+- Chef's own answer for a requirement it does not know (`mdl3`): the log should
+  say it is not installed.
 
 ### Guest boots
 
@@ -323,7 +363,12 @@ runs, against a fake game folder of real patch archives. It covers these cases:
 - guest boots: loaded once (the highest patch), `init` once, their own named
   link before the chain, five errors logged and stopped after 50;
 - the hand-off to Chef Shared Loader, with and without its core: which mods it
-  gets, its note, its one named link, `init` once, `shutdown` order.
+  gets, its note, its one named link, `init` once, `shutdown` order;
+- chef mode (0.14.0): a plain, a Chef-only, a MDL3-only and a broken mod with a
+  live stand-in for each loader — every mod starts exactly once, the MDL3 ones
+  are marked `loading` before Chef loads and `loaded` after MDL3 ran, no
+  `mom_*` list is written, the top link is `mods/mdl3/mdl3`, and without MDL3
+  the marked mods go to Chef and the log names them.
 
 ## Credits
 

@@ -76,8 +76,21 @@
 -- the chain back and runs Chef's init-less callbacks as one link on top of it,
 -- compiled as "mods/chef_shared_loader/chef_shared_loader": Chef first, then
 -- the chain, the order Chef keeps itself.
+--
+-- 0.14.0, chef mode: when Chef's core is deployed this loader runs no mod at
+-- all. Every mod is read once; the ones whose header says "-- HD2-Requires:
+-- mdl3" or "-- @loader mdl" (is_mdl) are marked "loading" in
+-- CowboyBingusModLoader.modules, the game is handed to Chef (phase "init", so
+-- Chef starts the rest right there), and MDL3's own boot chunk -- found by its
+-- first line, "-- MDL3 <version> game boot" -- is run afterwards as one more
+-- named link, "mods/mdl3/mdl3". MDL3 starts an addon with require and only
+-- reads the archive itself when that finds nothing and package.loaded has no
+-- entry, so the mods Chef started never run twice and the marked ones do. Its
+-- ModOptionsMenu / ModBindingsMenu are removed before the hand-off, so Chef
+-- installs its own and the settings are in its F9 menu. Without Chef's core the
+-- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.13.4"
+local MARKER = "boot-mod-loader-0.14.0"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -94,6 +107,7 @@ rawset(_G, "__boot_mod_loader", L)
 
 local ARCHIVE = "9ba626afa44a3aa3"
 local LUA_TYPE = "a14e8dfa2cd117e2"       -- murmur64("lua"), as hex
+local BOOT_ID = "f476df93691895fa"        -- murmur64("boot"): BML's boot and MDL3's
 local MAX_PATCH = 1024
 local GAP = 64                           -- stop after this many missing numbers past the last found
 
@@ -178,7 +192,9 @@ local function declared_in(file)
         local first = file:read(math.min(size, 8 + 300))
         if first ~= nil and #first > 8 and u32(first, 4) == 2 then          -- 2: source, not bytecode
           local name = string.match(string.sub(first, 9), "^%-%- HD2%-Addon: (mods/[A-Za-z0-9_]+/[A-Za-z0-9_/]+)\r?\n")
-          if hex64(rows, row) == CHEF_CORE_ID then
+          if hex64(rows, row) == BOOT_ID and string.match(string.sub(first, 9, 40), "^%s*%-%- MDL3 ") ~= nil then
+            found[#found + 1] = { name = "MDL3", at = at + 8, size = u32(first, 0), mdl3 = true }
+          elseif hex64(rows, row) == CHEF_CORE_ID then
             found[#found + 1] = { name = "chef core", at = at + 8, size = u32(first, 0), chef_core = true }
           elseif name ~= nil and string.sub(name, -1) ~= "/" then
             found[#found + 1] = { name = name, at = at + 8, size = u32(first, 0) }
@@ -211,6 +227,7 @@ local function discover()
         for _, entry in ipairs(found) do
           entry.patch, entry.path = n, path
           if entry.chef_core then L.chef_core = entry                       -- a higher patch wins
+          elseif entry.mdl3 then L.mdl3 = entry                            -- a higher patch wins
           else by_name[(entry.guest and "guest:" or "") .. entry.name] = entry end
         end
       else
@@ -247,6 +264,9 @@ end
 if rawget(_G, "CowboyBingusModLoader") == nil then
   rawset(_G, "CowboyBingusModLoader", {
     version = 17, api = 1, revision = MARKER,
+    -- 0.14.0: Chef reads this to see what another loader started, or is about to (its own
+    -- "Mods you start" rule: a mod found here is not started again). See mdl_claim below.
+    modules = {},
     capabilities = { after_startup = true, on_shutdown = true, open_log = true, mod_options = true, mod_bindings = true, ffi = false, jit = false },
     game = game,
     open_log = function(name)
@@ -2030,19 +2050,30 @@ local function for_chef(source)
   return ok and chef_only
 end
 
-local function run(entry)
+-- A mod that says it needs MDL3: "-- HD2-Requires: mdl3" (MDL3 ignores a requirement it does not
+-- know, Chef reads it as unmet) or "-- @loader mdl". The header only, like Chef's own rule.
+-- ponytail: first 1200 bytes, no version compare; nobody asked for one.
+local function is_mdl(source)
+  local head = string.sub(source, 1, 1200)
+  return string.find(head, "\n%-%- HD2%-Requires: mdl3[%s>]") ~= nil
+      or string.find(head, "\n%-%- @loader mdl3?[%s]") ~= nil
+end
+
+local function read_source(entry)
   local ok, file = pcall(io.open, entry.path, "rb")
-  if not ok or file == nil then
-    entry.state = "unreadable"
-    say(entry.name .. ": cannot open " .. entry.path)
-    return
-  end
+  if not ok or file == nil then return nil, "cannot open " .. entry.path end
   file:seek("set", entry.at)
   local source = file:read(entry.size)
   pcall(function() file:close() end)
-  if source == nil or #source ~= entry.size then
+  if source == nil or #source ~= entry.size then return nil, "short read" end
+  return source
+end
+
+local function run(entry)
+  local source, why = read_source(entry)
+  if source == nil then
     entry.state = "unreadable"
-    say(entry.name .. ": short read")
+    say(entry.name .. ": " .. why)
     return
   end
   if for_chef(source) then
@@ -2178,23 +2209,19 @@ end
 
 -- The mods made for Chef Shared Loader: handed to it when its core is here.
 local CHEF_CORE = "mods/chef_shared_loader/core_1"
-function L.hand_off()
-  if #L.for_chef == 0 then return end
-  local names = {}
-  for _, e in ipairs(L.for_chef) do names[#names + 1] = e.name end
-  -- its core from the archives (read like the mods), else through require
+
+-- Chef's core, once: from the archives (read like the mods), else through require. nil when it is
+-- not deployed, and that is what picks the legacy path (0.14.0).
+function L.load_chef_core()
+  if L.core_tried then return L.core_chunk, L.core_where end
+  L.core_tried = true
   local core, where = nil, nil
   if L.chef_core ~= nil then
-    local okf, file = pcall(io.open, L.chef_core.path, "rb")
-    if okf and file ~= nil then
-      file:seek("set", L.chef_core.at)
-      local text = file:read(L.chef_core.size)
-      pcall(function() file:close() end)
-      if text ~= nil and #text == L.chef_core.size then
-        local chunk, err = loadstring(text, "@" .. CHEF_CORE)
-        if chunk == nil then say("Chef Shared Loader's core does not compile: " .. tostring(err)) return end
-        core, where = chunk, "patch_" .. L.chef_core.patch
-      end
+    local text = read_source(L.chef_core)
+    if text ~= nil then
+      local chunk, err = loadstring(text, "@" .. CHEF_CORE)
+      if chunk == nil then say("Chef Shared Loader's core does not compile: " .. tostring(err)) end
+      core, where = chunk, "patch_" .. L.chef_core.patch
     end
   end
   if core == nil then
@@ -2203,6 +2230,15 @@ function L.hand_off()
     local ok, there = pcall(function() return A.can_get("lua", CHEF_CORE) end)
     if ok and there then core, where = function(name) return require(name) end, "require" end
   end
+  L.core_chunk, L.core_where = core, where
+  return core, where
+end
+
+function L.hand_off(force)
+  if #L.for_chef == 0 and not force then return end
+  local names = {}
+  for _, e in ipairs(L.for_chef) do names[#names + 1] = e.name end
+  local core, where = L.load_chef_core()
   if core == nil then
     say(string.format("%d mod(s) made for Chef Shared Loader, which is not deployed: not started (%s)", #names, table.concat(names, ", ")))
     return
@@ -2211,11 +2247,13 @@ function L.hand_off()
     say("Chef Shared Loader is running already: it starts " .. table.concat(names, ", "))
     return
   end
-  -- what failed here is not started again there (it skips a name package.loaded holds)
+  -- what failed here is not started again there (it skips a name package.loaded holds). Only the
+  -- failures: a mod marked for MDL3 must keep a nil entry, or MDL3 would read it as already run.
   local P = rawget(_G, "package")
   if type(P) == "table" and type(P.loaded) == "table" then
     for _, e in ipairs(L.mods) do
-      if e.state ~= "loaded" and e.state ~= "for chef" and P.loaded[e.name] == nil then P.loaded[e.name] = false end
+      local failed = e.state == "failed" or e.state == "does not compile" or e.state == "unreadable" or e.state == "load failed"
+      if failed and P.loaded[e.name] == nil then P.loaded[e.name] = false end
     end
   end
   local from = "Boot Mod Loader " .. string.gsub(MARKER, "^boot%-mod%-loader%-", "")
@@ -2250,6 +2288,116 @@ function L.hand_off()
   end
 end
 
+-- 0.14.0, Chef mode: MDL3 is hosted like a guest boot. It is one chunk that sets the four
+-- callbacks itself, so they are saved, its own are taken as its link and called once (its init),
+-- and the chain is put back. It starts an addon with require() and only reads the archive itself
+-- when that fails and package.loaded has no name for it, so every mod Chef started is left alone;
+-- the ones marked "loading" above are the only ones still to run.
+local function host_mdl3(chunk, entries, clock0)
+  local saved = {}
+  for _, k in ipairs(CALLBACKS) do saved[k] = rawget(_G, k) end
+  local ran, why = xpcall(chunk, function(e)
+    return tostring(e) .. "\n" .. (type(debug) == "table" and debug.traceback("", 2) or "")
+  end)
+  local g, kept = { name = "MDL3", fns = {}, errors = 0, on = true }, {}
+  g.failed = function(name, problem) guest_failed(g, name, problem) end
+  for _, k in ipairs(CALLBACKS) do
+    local now = rawget(_G, k)
+    if ran and type(now) == "function" and now ~= saved[k] then
+      g.fns[k] = now
+      if k ~= "init" then kept[#kept + 1] = k end            -- init is called once, not linked
+    end
+    rawset(_G, k, saved[k])
+  end
+  local function mark(state)
+    for _, e in ipairs(entries) do
+      e.state = state
+      local shim = rawget(_G, "CowboyBingusModLoader")
+      if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = state end
+    end
+  end
+  if not ran then
+    mark("load failed")
+    say("MDL3: FAILED: " .. tostring(why))
+    return
+  end
+  if g.fns.init ~= nil then
+    local ok, problem = pcall(g.fns.init)
+    if not ok then say("MDL3: init failed: " .. tostring(problem)) end
+  end
+  for _, k in ipairs({ "update", "render", "shutdown" }) do
+    if g.fns[k] ~= nil then
+      local previous = rawget(_G, k)
+      if type(previous) ~= "function" then previous = nil end
+      local make, problem = loadstring(GUEST_LINK, "@mods/mdl3/mdl3")
+      if make == nil then say("MDL3's link: " .. tostring(problem)) else rawset(_G, k, make(previous, g, k)) end
+    end
+  end
+  mark("loaded")
+  local names = {}
+  for _, e in ipairs(entries) do names[#names + 1] = e.name end
+  say(string.format("MDL3 runs %d mod(s) as one link (%s) in %.0f ms",
+                    #names, table.concat(kept, ", "), (os.clock() - clock0) * 1000))
+end
+
+-- Chef mode (0.14.0): nothing is run here. Every mod is sorted first — the ones that say they
+-- need MDL3 go to it, the rest to Chef — and Chef is handed the game with those names already
+-- marked in its table, so it leaves them alone.
+local function start_chef(list, guests, clock0)
+  local mdl, others = {}, {}
+  for _, e in ipairs(list) do
+    local source, why = read_source(e)
+    if source == nil then
+      e.state = "unreadable"
+      say(e.name .. ": " .. why)
+    elseif is_mdl(source) then
+      e.state = "mdl"
+      mdl[#mdl + 1] = e
+      if for_chef(source) then say(e.name .. ": both markers; MDL3 has it") end
+    else
+      e.state = "for chef"
+      L.for_chef[#L.for_chef + 1] = e
+    end
+  end
+  local chunk = nil
+  if #mdl > 0 then
+    if L.mdl3 ~= nil then
+      local source = read_source(L.mdl3)
+      if source ~= nil then chunk = loadstring(source, "@mods/mdl3/mdl3") end
+    end
+    if chunk == nil then
+      local names = {}
+      for _, e in ipairs(mdl) do names[#names + 1] = e.name end
+      say("MDL3 not deployed: " .. table.concat(names, ", ") .. " (Chef starts them)")
+      for _, e in ipairs(mdl) do e.state = "for chef"; L.for_chef[#L.for_chef + 1] = e end
+      mdl = {}
+    end
+  end
+  local shim = rawget(_G, "CowboyBingusModLoader")
+  for _, e in ipairs(mdl) do
+    if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = "loading" end
+  end
+  -- Chef sets its own menus only where none is; the settings of these mods go to its F9
+  rawset(_G, "ModOptionsMenu", nil)
+  rawset(_G, "ModBindingsMenu", nil)
+  say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3)", #L.for_chef, #mdl))
+  local handed, why = pcall(L.hand_off, true)
+  if not handed then say("hand-off to Chef Shared Loader: " .. tostring(why)) end
+  if #mdl > 0 and rawget(_G, "ChefSharedLoader") ~= nil then host_mdl3(chunk, mdl, clock0) end
+  for _, entry in ipairs(guests or {}) do
+    local ok2, w = pcall(run_guest, entry)
+    if not ok2 then say("guest boot " .. tostring(entry.name) .. ": " .. tostring(w)) end
+  end
+  for _, fn in ipairs(after_startup) do
+    local ok2, w = pcall(fn)
+    if not ok2 then say("after_startup: " .. tostring(w)) end
+  end
+  L.started_done = true
+  L.hook_guests()
+  L.hook_shutdown()
+  flush()
+end
+
 local function start()
   if L.started then return end
   L.started = true
@@ -2263,6 +2411,11 @@ local function start()
   L.mods = list
   check_game_version()
   flush()
+  if L.load_chef_core() ~= nil then
+    local ran, why = pcall(start_chef, list, guests, clock0)
+    if not ran then say("chef routing failed: " .. tostring(why)) flush() end
+    return
+  end
   for _, entry in ipairs(list) do
     run(entry)
     flush()

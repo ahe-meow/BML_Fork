@@ -70,6 +70,7 @@
 
 - 导出：`MDLB_GetABIVersion`、`MDLB_GetInfo`、`MDLB_GetMemory`、`MDLB_GetPerformance`、`MDLB_GetPerformanceDefaults`、`MDLB_GetTrustInfo`、`MDLB_QueueMemory`、`MDLB_QueuePerformance`、`MDLB_RequestStop`、`MDLB_SetHostAPI`，其余是 CRT。
 - 导入：`KERNEL32.dll`(143)、`bcrypt.dll`(3)、`ADVAPI32.dll`(1，`RegGetValueW`)。**没有** lua51 依赖。
+  KERNEL32 里含 `ReadProcessMemory` / `WriteProcessMemory` / `VirtualProtect` / `LoadLibraryExW` / `GetProcAddress` / `IsDebuggerPresent`——它在宿主进程里读写内存、可再加载模块，与"原生 owner 给 addon 提供内存数据"的定位一致。
 - TLS 回调为空；PE 证书表未被验证（`inspect-pe-certificates` 只做结构解析）。
 - 二进制里没有 `helldivers2` / `EasyAntiCheat` 字样 → 没有"必须是游戏宿主/必须是 boot"的检查。
 - Lua 侧加载方式：`package.loadlib(dll, "luaopen_mdlbridge_call")` 拿到模块入口，再用 MAGIC 握手（`"hello"` → `"MDL3OK"`）；默认路径 `bin/mdl_native_bridge/mdl_native_bridge.dll`，可用环境变量 `MDL_NATIVE_BRIDGE_DATA` 覆盖。
