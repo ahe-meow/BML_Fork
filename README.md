@@ -87,12 +87,18 @@ Everything else goes to Chef Shared Loader.
    with `require`: everything Chef started is already in `package.loaded`, so
    only the marked mods really run. Their mark becomes `loaded`, or `load
    failed`.
-4. Boot Mod Loader's Mod Options Menu and Mod Bindings Menu are **not**
+4. MDL3 takes the addon registry only when it is free: with another loader's
+   `CowboyBingusModLoader` in the game's globals it logs `coordinator: another
+   loader owns the addon registry` and starts nothing. Boot Mod Loader's table
+   is therefore taken out of `_G` for that load (and put back if MDL3 fails), so
+   MDL3 owns the registry and starts its mods. What it really started is read
+   back from `package.loaded`: the log says `MDL3 runs N of M mod(s)`.
+5. Boot Mod Loader's Mod Options Menu and Mod Bindings Menu are **not**
    installed in this mode: Chef sets its own, and the settings are in its F9
    menu. Nothing is written to `mom_*` / `mbm_*`; lists an earlier 0.13 launch
    left behind are renamed `.stale`, so HD2 Mod Setting GUI shows only current
    settings.
-5. Chef's, MDL3's and the game's callbacks run in that order: MDL3, Chef, then
+6. Chef's, MDL3's and the game's callbacks run in that order: MDL3, Chef, then
    the chain below (per-mod timers such as Mod Lag Watchdog can name both).
 
 Without Chef's core the old path is unchanged: Boot Mod Loader starts every

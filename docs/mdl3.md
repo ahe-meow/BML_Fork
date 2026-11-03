@@ -84,6 +84,7 @@
 2. MDL3 在顶层把 `init/update/render/shutdown` 全设成自己的 → 必须按 guest 方式托管（保存现有链，收编成一条具名 link，调一次它的 `init`）。
 3. 判定（0.14.2，实机验证后调整）：`-- HD2-Requires: mdl3` / `-- @loader mdl`；读 `HD2Data`（Data Hub 的全局，数据来自 MDL3 的原生 owner，Squad Ping / Enemy HP / BFV / Data Hub 都读它）；脚本 > 4 MB（Chef 核 `MAX_LUA = 4*1024*1024`，超过直接不读）；头 1200 字节含 `MDL3`；首行 `local context = ...` / `local ctx = ...`。日志按 mod 打印理由。**不再只看声明**：BFV（30.5 MB，头部无声明）与 Squad Ping（121 KB，只在正文里读 HD2Data）实机在 Chef 下不生效。
 4. `chef` 模式下 BML 不应再注入自己的 `ModOptionsMenu` / `ModBindingsMenu`，交接前清空这两个全局即可让 Chef 装自己的 F9 菜单。
+5. **注册表只能有一个主人**（0.14.3 实机发现）：MDL3 的 `coordinator` 在 `rawget(_G,'CowboyBingusModLoader')` 非空时直接返回 nil，日志写 `coordinator: another loader owns the addon registry`，随后一个 addon 都不启动，界面把 mod 标成"由 BML 运行"。所以托管 MDL3 前必须把 BML 自己的表从 `_G` 里拿掉（失败则放回），让它新建 `{version=17,api=1,modules={},provider='MDL',mdl3=true}`。启动结果不能靠假设：`package.loaded[name]` 有值才算真的跑过（日志 `MDL3 runs N of M`）。
 
 ## 8. 仍未验证（只能进游戏）
 

@@ -881,6 +881,13 @@ CHEF_LIVE = r"""
 """
 
 MDL3_FAKE = r"""-- MDL3 3.0.0-dev.28 game boot (stand-in: same start path as the real one)
+-- As the real one: it takes the addon registry only when no other loader's table is there.
+if rawget(_G, 'CowboyBingusModLoader') ~= nil then
+  MDL_HOST = 'another loader owns the addon registry'
+  return
+end
+rawset(_G, 'CowboyBingusModLoader', { version = 17, api = 1, modules = {}, provider = 'MDL' })
+MDL_HOST = 'MDL'
 local starts = {}
 for _, e in ipairs(__boot_mod_loader.mods) do
   local ok2, v = pcall(require, e.name)
@@ -967,9 +974,10 @@ def check_routing(source, failures):
                    and rt.eval("NAMED_RAN") is True and rt.eval("CTX_RAN") is True and rt.eval("BIG_RAN") is True
                    and rt.eval("HUB_RAN") == 1,
                    "routing (%s): MDL3 starts exactly the marked ones: %r" % (form, rt.eval("MDL_STARTS")), failures)
-                ok(rt.eval("CowboyBingusModLoader.modules['mods/test/mdl']") == "loaded"
-                   and rt.eval("CowboyBingusModLoader.modules['mods/test/alpha']") is None,
-                   "routing (%s): the mark is 'loaded' after MDL3 ran it" % form, failures)
+                ok(rt.eval("MDL_HOST") == "MDL" and rt.eval("CowboyBingusModLoader.provider") == "MDL"
+                   and rt.eval("package.loaded['mods/test/mdl']") is not None,
+                   "routing (%s): MDL3 took the addon registry and ran the marked mods: %r"
+                   % (form, rt.eval("MDL_HOST")), failures)
                 ok("mods/test/named: MDL3 (names MDL3)" in log and "mods/test/big: MDL3 (over Chef's 4 MB)" in log
                    and "mods/test/ctx: MDL3 (takes MDL3's context)" in log and "mods/test/mdl: MDL3 (asks for it)" in log
                    and "mods/test/hub: MDL3 (reads the Data Hub)" in log,

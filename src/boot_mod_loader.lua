@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.2"
+local MARKER = "boot-mod-loader-0.14.3"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -298,6 +298,10 @@ if rawget(_G, "CowboyBingusModLoader") == nil then
       if L.started_done then L.hook_shutdown() end                       -- registered late: hook now
     end,
   })
+  -- Ours: taken out of _G while MDL3 loads, because MDL3 takes the addon registry only when no
+  -- other loader's table is there (its log: "coordinator: another loader owns the addon registry",
+  -- and then it starts nothing). See host_mdl3.
+  L.shim = rawget(_G, "CowboyBingusModLoader")
 end
 
 local function pack(...) return { n = select("#", ...), ... } end
@@ -2326,6 +2330,11 @@ end
 local function host_mdl3(chunk, entries, clock0)
   local saved = {}
   for _, k in ipairs(CALLBACKS) do saved[k] = rawget(_G, k) end
+  -- MDL3 takes the addon registry only when it is free: with ours in the way it logs "coordinator:
+  -- another loader owns the addon registry" and starts nothing at all. So ours is taken out for
+  -- the load, and put back if MDL3 does not start.
+  local taken = L.shim ~= nil and rawget(_G, "CowboyBingusModLoader") == L.shim
+  if taken then rawset(_G, "CowboyBingusModLoader", nil) end
   local ran, why = xpcall(chunk, function(e)
     return tostring(e) .. "\n" .. (type(debug) == "table" and debug.traceback("", 2) or "")
   end)
@@ -2342,11 +2351,12 @@ local function host_mdl3(chunk, entries, clock0)
   local function mark(state)
     for _, e in ipairs(entries) do
       e.state = state
-      local shim = rawget(_G, "CowboyBingusModLoader")
+      local shim = L.shim
       if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = state end
     end
   end
   if not ran then
+    if taken then rawset(_G, "CowboyBingusModLoader", L.shim) end
     mark("load failed")
     say("MDL3: FAILED: " .. tostring(why))
     return
@@ -2363,11 +2373,17 @@ local function host_mdl3(chunk, entries, clock0)
       if make == nil then say("MDL3's link: " .. tostring(problem)) else rawset(_G, k, make(previous, g, k)) end
     end
   end
-  mark("loaded")
-  local names = {}
-  for _, e in ipairs(entries) do names[#names + 1] = e.name end
-  say(string.format("MDL3 runs %d mod(s) as one link (%s) in %.0f ms",
-                    #names, table.concat(kept, ", "), (os.clock() - clock0) * 1000))
+  -- what MDL3 really started: it marks every addon it ran in package.loaded. A mod it left alone
+  -- (off in its own menu, or refused) keeps a nil entry, and the log says so.
+  local P, started = rawget(_G, "package"), 0
+  for _, e in ipairs(entries) do
+    local there = type(P) == "table" and type(P.loaded) == "table" and P.loaded[e.name] ~= nil
+    e.state = there and "loaded" or "not started"
+    if type(L.shim) == "table" and type(L.shim.modules) == "table" then L.shim.modules[e.name] = e.state end
+    if there then started = started + 1 end
+  end
+  say(string.format("MDL3 runs %d of %d mod(s) as one link (%s) in %.0f ms",
+                    started, #entries, table.concat(kept, ", "), (os.clock() - clock0) * 1000))
 end
 
 -- Chef mode (0.14.0): nothing is run here. Every mod is sorted first — the ones that say they
