@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.6"
+local MARKER = "boot-mod-loader-0.14.7"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -1887,7 +1887,7 @@ MBB.api = {
 local API = { __index = function(_, k) if k == "api" then return MOM.api_for() end end }
 setmetatable(MBB.api, API)
 if rawget(_G, "ModOptionsMenu") == nil then
-  rawset(_G, "ModOptionsMenu", setmetatable({
+  local mom = setmetatable({
     version = 3, max_mods = MOM.MAX_MODS, max_options = MOM.MAX_OPTIONS,
     revision = MARKER, window = "HD2 Mod Setting GUI",
     register_option = function(id, spec)
@@ -1906,11 +1906,14 @@ if rawget(_G, "ModOptionsMenu") == nil then
       return true
     end,
     ready = function() return true end,
-  }, API))
-  MOM.api_register = rawget(rawget(_G, "ModOptionsMenu"), "register_option")   -- the loader's own, to tell a wrapper
+  }, API)
+  rawset(_G, "ModOptionsMenu", mom)
+  L.mom = mom                                                               -- put back under MDL3, see host_mdl3
+  MOM.api_register = rawget(mom, "register_option")                        -- the loader's own, to tell a wrapper
 end
 if rawget(_G, "ModBindingsMenu") == nil then
   rawset(_G, "ModBindingsMenu", MBB.api)
+  L.mbm = MBB.api                                                          -- put back under MDL3, see host_mdl3
   MOM.mbm_register = rawget(MBB.api, "register_binding")
 end
 
@@ -2360,6 +2363,14 @@ local function host_mdl3(chunk, entries, clock0)
       if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = state end
     end
   end
+  -- MDL3 (dev.33) installs no menus of its own; the mods it starts still register what settings
+  -- they have with whatever ModOptionsMenu is there. Ours serve them then, and HD2 Mod Setting GUI
+  -- lists them -- better than a switch with nothing behind it.
+  if ran and rawget(_G, "ModOptionsMenu") == nil then
+    if L.mom ~= nil then rawset(_G, "ModOptionsMenu", L.mom) end
+    if L.mbm ~= nil then rawset(_G, "ModBindingsMenu", L.mbm) end
+    say("MDL3 offers no menus of its own: Boot Mod Loader's serve the mods it starts")
+  end
   if not ran then
     if taken then rawset(_G, "CowboyBingusModLoader", L.shim) end
     mark("load failed")
@@ -2480,6 +2491,7 @@ local function start_chef(list, guests, clock0)
   L.started_done = true
   L.hook_guests()
   L.hook_shutdown()
+  L.hook_update()                                 -- serves a list or a settings file if one appeared
   flush()
 end
 

@@ -83,7 +83,7 @@
 1. 路由可行：BML 当 boot → 分类 → 先把 mdl 组写进 `CowboyBingusModLoader.modules[name]="loading"` 让 Chef 跳过 → 交接给 Chef → Chef 启动其余 mod 并写 `package.loaded` → 最后托管 MDL3 的 boot chunk，它只会真正启动还没被启动的那些。
 2. MDL3 在顶层把 `init/update/render/shutdown` 全设成自己的 → 必须按 guest 方式托管（保存现有链，收编成一条具名 link，调一次它的 `init`）。
 3. 判定（0.14.2，实机验证后调整）：`-- HD2-Requires: mdl3` / `-- @loader mdl`；读 `HD2Data`（Data Hub 的全局，数据来自 MDL3 的原生 owner，Squad Ping / Enemy HP / BFV / Data Hub 都读它）；脚本 > 4 MB（Chef 核 `MAX_LUA = 4*1024*1024`，超过直接不读）；头 1200 字节含 `MDL3`；首行 `local context = ...` / `local ctx = ...`。日志按 mod 打印理由。**不再只看声明**：BFV（30.5 MB，头部无声明）与 Squad Ping（121 KB，只在正文里读 HD2Data）实机在 Chef 下不生效。
-4. `chef` 模式下 BML 不应再注入自己的 `ModOptionsMenu` / `ModBindingsMenu`，交接前清空这两个全局即可让 Chef 装自己的 F9 菜单。
+4. `chef` 模式下 BML 不应再注入自己的 `ModOptionsMenu` / `ModBindingsMenu`，交接前清空这两个全局即可让 Chef 装自己的 F9 菜单。托管 MDL3 前同样要清空一次（Chef 已装了自己的）；若 MDL3 跑完仍未安装（dev.33 实测如此，MDL.log 无 "mod options: MDL provides ..."），就把 BML 的那两份放回去，MDL3 启动的 mod 才有地方注册设置（进 HD2 Mod Setting GUI）。
 5. **注册表只能有一个主人**（0.14.3 实机发现）：MDL3 的 `coordinator` 在 `rawget(_G,'CowboyBingusModLoader')` 非空时直接返回 nil，日志写 `coordinator: another loader owns the addon registry`，随后一个 addon 都不启动，界面把 mod 标成"由 BML 运行"。所以托管 MDL3 前必须把 BML 自己的表从 `_G` 里拿掉（失败则放回），让它新建 `{version=17,api=1,modules={},provider='MDL',mdl3=true}`。启动结果不能靠假设：`package.loaded[name]` 有值才算真的跑过（日志 `MDL3 runs N of M`）。
 6. **Chef 不写 `package.loaded`**（0.14.4 实机发现）：Chef 1.5.1 在它自己的空间里启动 mod，`package.loaded` 不留条目（它自己的 require 只给 look-alike 打标）。MDL3 判断"已被别人启动"只看 `package.loaded`，于是 Chef 启动过的 mod 会被 MDL3 **再跑一遍**（日志里 `addon mods/alomare/skip_intro_animation: loaded`，而 Chef 已启动它）。所以交接后 BML 要给交给 Chef 的每个 mod 写 `package.loaded[name]=true`（真话：Chef 确实跑过）。
 

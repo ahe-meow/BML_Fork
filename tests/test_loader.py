@@ -893,7 +893,7 @@ end
 rawset(_G, 'CowboyBingusModLoader', { version = 17, api = 1, modules = {}, provider = 'MDL' })
 MDL_HOST = 'MDL'
 MDL_MENU = rawget(_G, 'ModOptionsMenu') == nil and 'free' or 'blocked'
-if MDL_MENU == 'free' then rawset(_G, 'ModOptionsMenu', { api = 1, version = 3, mdl = true }) end
+-- dev.33 installs no menus of its own; the loader's must be back for its mods to register into
 local starts = {}
 for _, e in ipairs(__boot_mod_loader.mods) do
   local ok2, v = pcall(require, e.name)
@@ -988,8 +988,8 @@ def check_routing(source, failures):
                    and rt.eval("NAMED_RAN") is True and rt.eval("CTX_RAN") is True and rt.eval("BIG_RAN") is True
                    and rt.eval("HUB_RAN") == 1,
                    "routing (%s): MDL3 starts exactly the marked ones: %r" % (form, rt.eval("MDL_STARTS")), failures)
-                ok(rt.eval("MDL_MENU") == "free" and rt.eval("ModOptionsMenu.mdl") is True,
-                   "routing (%s): MDL3 installs its own ModOptionsMenu (Chef's would keep its settings out)" % form, failures)
+                ok(rt.eval("MDL_MENU") == "free" and rt.eval("ModOptionsMenu.window") == "HD2 Mod Setting GUI",
+                   "routing (%s): the menus are free for MDL3, and the loader's serve the mods it starts" % form, failures)
                 ok(rt.eval("MDL_HOST") == "MDL" and rt.eval("CowboyBingusModLoader.provider") == "MDL"
                    and rt.eval("package.loaded['mods/test/mdl']") is not None,
                    "routing (%s): MDL3 took the addon registry and ran the marked mods: %r"

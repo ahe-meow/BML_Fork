@@ -96,9 +96,10 @@ Everything else goes to Chef Shared Loader.
    loader owns the addon registry` and starts nothing. Boot Mod Loader's table
    is therefore taken out of `_G` for that load (and put back if MDL3 fails), so
    The same holds for the menus: Chef has set its own ModOptionsMenu /
-   ModBindingsMenu by then, and MDL3 installs its settings service only when
-   none is there, so both are cleared before MDL3 loads. Without that its menu
-   shows a mod's on/off switch and none of its settings.
+   ModBindingsMenu by then, so both are cleared before MDL3 loads. If MDL3
+   installs its own, its pages carry the settings. If it installs none (dev.33
+   does not), Boot Mod Loader's are put back before its mods start, so what they
+   register reaches HD2 Mod Setting GUI instead of going nowhere.
    MDL3 owns the registry and starts its mods. What it really started is read
    back from `package.loaded`: the log says `MDL3 runs N of M mod(s)`. A marked
    mod it did not start (refused, off in its menu, or too big for its sandbox)
