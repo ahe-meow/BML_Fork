@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.4"
+local MARKER = "boot-mod-loader-0.14.5"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -2373,17 +2373,32 @@ local function host_mdl3(chunk, entries, clock0)
       if make == nil then say("MDL3's link: " .. tostring(problem)) else rawset(_G, k, make(previous, g, k)) end
     end
   end
-  -- what MDL3 really started: it marks every addon it ran in package.loaded. A mod it left alone
-  -- (off in its own menu, or refused) keeps a nil entry, and the log says so.
-  local P, started = rawget(_G, "package"), 0
+  -- What MDL3 really started: it marks every addon it ran in package.loaded (false when it
+  -- failed). A mod it left alone (off in its own menu, or refused) keeps a nil entry.
+  local P, started, left = rawget(_G, "package"), 0, {}
+  local function loaded(name)
+    local v = type(P) == "table" and type(P.loaded) == "table" and P.loaded[name]
+    return v ~= nil and v ~= false
+  end
   for _, e in ipairs(entries) do
-    local there = type(P) == "table" and type(P.loaded) == "table" and P.loaded[e.name] ~= nil
-    e.state = there and "loaded" or "not started"
+    if loaded(e.name) then
+      started = started + 1
+      e.state = "loaded"
+    else
+      e.state = "not started"
+      left[#left + 1] = e
+    end
     if type(L.shim) == "table" and type(L.shim.modules) == "table" then L.shim.modules[e.name] = e.state end
-    if there then started = started + 1 end
   end
   say(string.format("MDL3 runs %d of %d mod(s) as one link (%s) in %.0f ms",
                     started, #entries, table.concat(kept, ", "), (os.clock() - clock0) * 1000))
+  -- A mod MDL3 did not start (it refused it, its sandbox refused it, or it was off) runs here
+  -- instead, in the game's own environment. That is the only road left for a mod over Chef's
+  -- 4 MB, and the one Battlefield 5 Kill Feedback needed.
+  for _, e in ipairs(left) do
+    say(e.name .. ": MDL3 did not start it; Boot Mod Loader runs it")
+    run(e)
+  end
 end
 
 -- Chef mode (0.14.0): nothing is run here. Every mod is sorted first — the ones that say they

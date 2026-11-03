@@ -96,7 +96,9 @@ Everything else goes to Chef Shared Loader.
    loader owns the addon registry` and starts nothing. Boot Mod Loader's table
    is therefore taken out of `_G` for that load (and put back if MDL3 fails), so
    MDL3 owns the registry and starts its mods. What it really started is read
-   back from `package.loaded`: the log says `MDL3 runs N of M mod(s)`.
+   back from `package.loaded`: the log says `MDL3 runs N of M mod(s)`. A marked
+   mod it did not start (refused, off in its menu, or too big for its sandbox)
+   is run here instead, in the game's own environment, and the log says so.
 5. Boot Mod Loader's Mod Options Menu and Mod Bindings Menu are **not**
    installed in this mode: Chef sets its own, and the settings are in its F9
    menu. Nothing is written to `mom_*` / `mbm_*`; lists an earlier 0.13 launch
