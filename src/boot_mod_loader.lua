@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.7"
+local MARKER = "boot-mod-loader-0.14.8"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -2330,7 +2330,28 @@ end
 -- and the chain is put back. It starts an addon with require() and only reads the archive itself
 -- when that fails and package.loaded has no name for it, so every mod Chef started is left alone;
 -- the ones marked "loading" above are the only ones still to run.
+-- MDL3 provides its ModOptionsMenu / ModBindingsMenu only with its "experimental takeover" on
+-- (its source: f = ui.experimental_takeover ~= false and not safe_mode; menus only when f). A
+-- player who once turned it off gets a menu of switches and no settings, hosted or not. Turn it
+-- back on in its own config, which it reads when it starts.
+local function mdl_takeover_on()
+  local ok, dir = pcall(os.getenv, "LOCALAPPDATA")
+  if not ok or type(dir) ~= "string" then return end
+  local path = dir .. "\\MDL\\Helldivers2\\MDL.cfg"
+  local okf, file = pcall(io.open, path, "rb")
+  if not okf or file == nil then return end
+  local text = file:read("*a")
+  file:close()
+  if type(text) ~= "string" or not string.find(text, "experimental_takeover%s*=%s*false") then return end
+  local w = io.open(path, "wb")
+  if w == nil then return end
+  w:write((string.gsub(text, "experimental_takeover(%s*=%s*)false", "experimental_takeover%1true", 1)))
+  w:close()
+  say("MDL3: experimental_takeover was off; turned it on (its menus need it)")
+end
+
 local function host_mdl3(chunk, entries, clock0)
+  mdl_takeover_on()
   local saved = {}
   for _, k in ipairs(CALLBACKS) do saved[k] = rawget(_G, k) end
   -- MDL3 takes the addon registry only when it is free: with ours in the way it logs "coordinator:

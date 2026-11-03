@@ -99,3 +99,9 @@
 "MDL3 不调用 init，首帧补一次；update 继续交给 CSL"。
 它证明两件事：加载器的核可以当普通 addon 跑；反过来（MDL3 当 guest）也可以期待同样的可行性。
 它的文件头同时写明"只与 MDL3 一起用；BML/CSL 本体不要同时启用"——那是给最终用户的部署建议，不是协议限制。
+
+## 10. dev.33 的设置界面（2026-11-04）
+
+- 解出 dev.33（同一解密器，常量不同：PRNG 221/9264981147793、字节流 238、滚动初值 73、key 1124343134926）。
+- 设置服务的开关：`f = ui.experimental_takeover ~= false and not safe_mode`；只有 f 为真且 `ModOptionsMenu` 为空时才安装，日志 `mod options: MDL provides the Mod Options Menu API`。
+- 玩家把它关掉后，任何模式下（包括单独当 boot）都没有设置项；0.14.8 起托管前把 `MDL.cfg` 里的 `experimental_takeover` 改回 true。

@@ -95,21 +95,22 @@ Everything else goes to Chef Shared Loader.
    `CowboyBingusModLoader` in the game's globals it logs `coordinator: another
    loader owns the addon registry` and starts nothing. Boot Mod Loader's table
    is therefore taken out of `_G` for that load (and put back if MDL3 fails), so
-   The same holds for the menus: Chef has set its own ModOptionsMenu /
-   ModBindingsMenu by then, so both are cleared before MDL3 loads. If MDL3
-   installs its own, its pages carry the settings. If it installs none (dev.33
-   does not), Boot Mod Loader's are put back before its mods start, so what they
-   register reaches HD2 Mod Setting GUI instead of going nowhere.
    MDL3 owns the registry and starts its mods. What it really started is read
    back from `package.loaded`: the log says `MDL3 runs N of M mod(s)`. A marked
    mod it did not start (refused, off in its menu, or too big for its sandbox)
    is run here instead, in the game's own environment, and the log says so.
-5. Boot Mod Loader's Mod Options Menu and Mod Bindings Menu are **not**
-   installed in this mode: Chef sets its own, and the settings are in its F9
-   menu. Nothing is written to `mom_*` / `mbm_*`; lists an earlier 0.13 launch
-   left behind are renamed `.stale`, so HD2 Mod Setting GUI shows only current
-   settings.
-6. Chef's, MDL3's and the game's callbacks run in that order: MDL3, Chef, then
+5. The same holds for the menus: Chef has set its own ModOptionsMenu /
+   ModBindingsMenu by then, so both are cleared before MDL3 loads. MDL3 installs
+   its own only with its **experimental takeover** on (its `MDL.cfg`,
+   `ui.experimental_takeover`); a player who turned that off gets a list of
+   switches and no settings, so it is turned back on for it. If MDL3 still
+   installs no menu, Boot Mod Loader's are put back before its mods start, and
+   what they register reaches HD2 Mod Setting GUI instead of going nowhere.
+6. Boot Mod Loader's menus are not installed for Chef: it sets its own, and the
+   settings of the mods it starts are in its F9 menu. Lists an earlier 0.13
+   launch left behind are renamed `.stale`, so HD2 Mod Setting GUI shows only
+   current settings.
+7. Chef's, MDL3's and the game's callbacks run in that order: MDL3, Chef, then
    the chain below (per-mod timers such as Mod Lag Watchdog can name both).
 
 Without Chef's core the old path is unchanged: Boot Mod Loader starts every

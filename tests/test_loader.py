@@ -959,6 +959,11 @@ def check_routing(source, failures):
                              archive="9ba626afa44a3aa3.patch_11")
             elif form == "boot":
                 write_module(data, "boot", MDL3_FAKE, archive="9ba626afa44a3aa3.patch_11")
+            cfg_dir = os.path.join(root, "local", "MDL", "Helldivers2")
+            os.makedirs(cfg_dir, exist_ok=True)
+            cfg_path = os.path.join(cfg_dir, "MDL.cfg")
+            with open(cfg_path, "w", encoding="utf-8") as fh:
+                fh.write("return {\n  ui = { experimental_takeover = false },\n}\n")
             rt = runtime(root, CHECKED)
             rt.execute("stingray.Application.can_get = function(kind, name) return false end")
             rt.execute("GAME_UPS = 0 update = function() GAME_UPS = GAME_UPS + 1 end GAME_UPDATE = update")
@@ -1000,6 +1005,10 @@ def check_routing(source, failures):
                    and "mods/test/refused: MDL3 did not start it; Boot Mod Loader runs it" in log,
                    "routing (%s): the log names why each one went to MDL3" % form, failures)
                 ok("both markers; MDL3 has it" in log, "routing (%s): a mod with both markers is named" % form, failures)
+                with open(cfg_path, encoding="utf-8") as fh:
+                    cfg = fh.read()
+                ok("experimental_takeover = true" in cfg and "turned it on" in log,
+                   "routing (%s): MDL3's experimental_takeover is turned on for it" % form, failures)
                 ok(rt.eval("MDL_INITS") == 1 and rt.eval("CHEF_INITS") == 1,
                    "routing (%s): one init each: %r %r" % (form, rt.eval("CHEF_INITS"), rt.eval("MDL_INITS")), failures)
                 rt.execute("update(0.016) update(0.016)")
