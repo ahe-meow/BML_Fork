@@ -103,9 +103,11 @@ Everything else goes to Chef Shared Loader.
    ModBindingsMenu by then, so both are cleared before MDL3 loads. MDL3 installs
    its own only with its **experimental takeover** on (its `MDL.cfg`,
    `ui.experimental_takeover`); a player who turned that off gets a list of
-   switches and no settings, so it is turned back on for it. If MDL3 still
-   installs no menu, Boot Mod Loader's are put back before its mods start, and
-   what they register reaches HD2 Mod Setting GUI instead of going nowhere.
+   switches and no settings, so it is turned back on for it. MDL3 installs those
+   menus inside its `init`, so Boot Mod Loader waits for that call to return
+   before it decides: if MDL3 took them, its pages carry the settings; if not,
+   Boot Mod Loader's are put back and what the mods register reaches HD2 Mod
+   Setting GUI instead of going nowhere.
 6. Boot Mod Loader's menus are not installed for Chef: it sets its own, and the
    settings of the mods it starts are in its F9 menu. Lists an earlier 0.13
    launch left behind are renamed `.stale`, so HD2 Mod Setting GUI shows only

@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.8"
+local MARKER = "boot-mod-loader-0.14.9"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -2384,14 +2384,6 @@ local function host_mdl3(chunk, entries, clock0)
       if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = state end
     end
   end
-  -- MDL3 (dev.33) installs no menus of its own; the mods it starts still register what settings
-  -- they have with whatever ModOptionsMenu is there. Ours serve them then, and HD2 Mod Setting GUI
-  -- lists them -- better than a switch with nothing behind it.
-  if ran and rawget(_G, "ModOptionsMenu") == nil then
-    if L.mom ~= nil then rawset(_G, "ModOptionsMenu", L.mom) end
-    if L.mbm ~= nil then rawset(_G, "ModBindingsMenu", L.mbm) end
-    say("MDL3 offers no menus of its own: Boot Mod Loader's serve the mods it starts")
-  end
   if not ran then
     if taken then rawset(_G, "CowboyBingusModLoader", L.shim) end
     mark("load failed")
@@ -2401,6 +2393,14 @@ local function host_mdl3(chunk, entries, clock0)
   if g.fns.init ~= nil then
     local ok, problem = pcall(g.fns.init)
     if not ok then say("MDL3: init failed: " .. tostring(problem)) end
+  end
+  -- MDL3 installs its menus inside its init (its log puts "mod options: ..." before the mods
+  -- start), so the check has to wait until init returns. If it still has none, ours serve the mods
+  -- it just started, and HD2 Mod Setting GUI lists them.
+  if rawget(_G, "ModOptionsMenu") == nil then
+    if L.mom ~= nil then rawset(_G, "ModOptionsMenu", L.mom) end
+    if L.mbm ~= nil then rawset(_G, "ModBindingsMenu", L.mbm) end
+    say("MDL3 offers no menus of its own: Boot Mod Loader's serve the mods it starts")
   end
   for _, k in ipairs({ "update", "render", "shutdown" }) do
     if g.fns[k] ~= nil then

@@ -105,3 +105,5 @@
 - 解出 dev.33（同一解密器，常量不同：PRNG 221/9264981147793、字节流 238、滚动初值 73、key 1124343134926）。
 - 设置服务的开关：`f = ui.experimental_takeover ~= false and not safe_mode`；只有 f 为真且 `ModOptionsMenu` 为空时才安装，日志 `mod options: MDL provides the Mod Options Menu API`。
 - 玩家把它关掉后，任何模式下（包括单独当 boot）都没有设置项；0.14.8 起托管前把 `MDL.cfg` 里的 `experimental_takeover` 改回 true。
+
+- 0.14.9：它把设置服务装在 **init** 里（日志 `starting MDL3 ...` 与 `mod options: ...` 同一段），所以回填 BML 菜单必须等它的 init 返回后再判断；0.14.7/0.14.8 在 init 之前回填，正好挡住了它。
