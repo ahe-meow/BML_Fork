@@ -68,6 +68,7 @@ A mod goes to MDL3 when any of these is true (the log names which):
 | the mod | why MDL3 |
 |---|---|
 | says `-- HD2-Requires: mdl3` or `-- @loader mdl` in its first 1200 bytes | it asks for it |
+| reads `HD2Data`, the HD2 Data Hub's table | the hub's data comes from MDL3's native owner |
 | is a Lua resource over 4 MB | Chef does not read one ("Lua resource(s) over 4 MB not read") |
 | says `MDL3` in its first 1200 bytes (`MDL3 build`, `(game VM entry, MDL3)`) | the builds for it do |
 | starts with `local context = ...` or `local ctx = ...` | MDL3 hands its addons a context table |

@@ -913,9 +913,11 @@ ROUTE_MODS = {
     9: ("mods/test/ctx", "-- HD2-Addon: mods/test/ctx\nlocal context=...\nCTX_RAN = true\n", 2),
     # Chef's core does not read a Lua resource over 4 MB, so a mod that size can only run here
     10: ("mods/test/big", "-- HD2-Addon: mods/test/big\n-- " + "x" * (4 * 1024 * 1024) + "\nBIG_RAN = true\n", 2),
+    # reads the HD2 Data Hub, whose data only exists where MDL3's native owner runs
+    12: ("mods/test/hub", "-- HD2-Addon: mods/test/hub\nlocal D = rawget(_G, 'HD2Data')\nHUB_RAN = (HUB_RAN or 0) + 1\n", 2),
 }
 
-MDL_GROUP = "mods/test/mdl,mods/test/dual,mods/test/named,mods/test/ctx,mods/test/big"
+MDL_GROUP = "mods/test/mdl,mods/test/dual,mods/test/named,mods/test/ctx,mods/test/big,mods/test/hub"
 
 
 def check_routing(source, failures):
@@ -945,8 +947,8 @@ def check_routing(source, failures):
                        encoding="utf-8").read()
             log = log[log.rindex("== boot-mod-loader-"):]
             here = form != "none"
-            ok(("routing: chef (3 mod(s) for Chef, 5 for MDL3)" if here else
-                "routing: chef (8 mod(s) for Chef, 0 for MDL3)") in log,
+            ok(("routing: chef (3 mod(s) for Chef, 6 for MDL3)" if here else
+                "routing: chef (9 mod(s) for Chef, 0 for MDL3)") in log,
                "routing (%s): the log says who gets what: %r" % (form, [l for l in log.splitlines() if "routing" in l]), failures)
             ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("NARROW_RAN") is True,
                "routing (%s): BML runs no mod itself; Chef started the plain and the chef one" % form, failures)
@@ -962,13 +964,15 @@ def check_routing(source, failures):
                 ok(starts == "mods/test/alpha,mods/test/narrow,mods/test/broken:failed",
                    "routing (%s): Chef starts the rest, not the five marked for MDL3: %r" % (form, starts), failures)
                 ok(rt.eval("MDL_STARTS") == MDL_GROUP and rt.eval("MDL_RAN") == 1 and rt.eval("DUAL_RAN") is True
-                   and rt.eval("NAMED_RAN") is True and rt.eval("CTX_RAN") is True and rt.eval("BIG_RAN") is True,
+                   and rt.eval("NAMED_RAN") is True and rt.eval("CTX_RAN") is True and rt.eval("BIG_RAN") is True
+                   and rt.eval("HUB_RAN") == 1,
                    "routing (%s): MDL3 starts exactly the marked ones: %r" % (form, rt.eval("MDL_STARTS")), failures)
                 ok(rt.eval("CowboyBingusModLoader.modules['mods/test/mdl']") == "loaded"
                    and rt.eval("CowboyBingusModLoader.modules['mods/test/alpha']") is None,
                    "routing (%s): the mark is 'loaded' after MDL3 ran it" % form, failures)
                 ok("mods/test/named: MDL3 (names MDL3)" in log and "mods/test/big: MDL3 (over Chef's 4 MB)" in log
-                   and "mods/test/ctx: MDL3 (takes MDL3's context)" in log and "mods/test/mdl: MDL3 (asks for it)" in log,
+                   and "mods/test/ctx: MDL3 (takes MDL3's context)" in log and "mods/test/mdl: MDL3 (asks for it)" in log
+                   and "mods/test/hub: MDL3 (reads the Data Hub)" in log,
                    "routing (%s): the log names why each one went to MDL3" % form, failures)
                 ok("both markers; MDL3 has it" in log, "routing (%s): a mod with both markers is named" % form, failures)
                 ok(rt.eval("MDL_INITS") == 1 and rt.eval("CHEF_INITS") == 1,
@@ -979,9 +983,9 @@ def check_routing(source, failures):
                 rt.execute("ORDER = '' shutdown()")
                 ok(rt.eval("ORDER") == "mdl3,chef,game,", "routing (%s): shutdown: MDL3, Chef, then the game's: %r" % (form, rt.eval("ORDER")), failures)
             else:
-                ok("MDL3 not deployed: mods/test/mdl, mods/test/dual, mods/test/named, mods/test/ctx, mods/test/big (Chef starts them)" in log,
+                ok("MDL3 not deployed: mods/test/mdl, mods/test/dual, mods/test/named, mods/test/ctx, mods/test/big, mods/test/hub (Chef starts them)" in log,
                    "routing (%s): without MDL3 the log names them" % form, failures)
-                ok(rt.eval("MDL_RAN") == 1 and rt.eval("BIG_RAN") is True and rt.eval("MDL_STARTS") is None,
+                ok(rt.eval("MDL_RAN") == 1 and rt.eval("BIG_RAN") is True and rt.eval("HUB_RAN") == 1 and rt.eval("MDL_STARTS") is None,
                    "routing (%s): without MDL3 Chef starts them, once: %r" % (form, starts), failures)
         finally:
             shutil.rmtree(root, ignore_errors=True)

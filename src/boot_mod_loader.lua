@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.1"
+local MARKER = "boot-mod-loader-0.14.2"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -2063,21 +2063,24 @@ local function for_chef(source)
   return ok and chef_only
 end
 
--- Why a mod is MDL3's, or nil. Four answers, in this order:
+-- Why a mod is MDL3's, or nil. Five answers, in this order:
 --   * its header asks for it: "-- HD2-Requires: mdl3" (MDL3 ignores a requirement it does not know,
 --     Chef reads it as unmet) or "-- @loader mdl";
+--   * it reads HD2Data, the HD2 Data Hub's table: the hub's data comes from MDL3's native owner
+--     ('hd2data'), so a mod that consumes it only works where MDL3 runs (Squad Ping, Enemy HP);
 --   * Chef would not read it at all: its core skips a Lua resource over 4 MB ("Lua resource(s) over
 --     4 MB not read"), so a big mod can only run here;
---   * it says so: "MDL3" in its first 1200 bytes (the builds for it do: "MDL3 build", "(game VM
---     entry, MDL3)", "MDL3 dev.32+ ...");
+--   * it says so in its header: "MDL3" in its first 1200 bytes ("MDL3 build", "(game VM entry,
+--     MDL3)", "MDL3 dev.32+ ...");
 --   * it takes MDL3's context table: "local context = ..." or "local ctx = ..." as its first line.
--- ponytail: first 1200 bytes, no version compare; the log names the reason for every mod.
+-- ponytail: the header rules look at 1200 bytes, no version compare; the log names the reason.
 local CHEF_MAX_LUA = 4 * 1024 * 1024
 local function is_mdl(source)
   local head = string.sub(source, 1, 1200)
   if string.find(head, "\n%-%- HD2%-Requires: mdl3[%s>]") or string.find(head, "\n%-%- @loader mdl3?[%s]") then
     return "asks for it"
   end
+  if string.find(source, "HD2Data", 1, true) then return "reads the Data Hub" end
   if #source > CHEF_MAX_LUA then return "over Chef's 4 MB" end
   if string.find(head, "MDL3", 1, true) then return "names MDL3" end
   if string.find(head, "\nlocal%s+context%s*=%s*%.%.%.") or string.find(head, "\nlocal%s+ctx%s*=%s*%.%.%.") then
