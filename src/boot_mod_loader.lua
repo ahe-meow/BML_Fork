@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.5"
+local MARKER = "boot-mod-loader-0.14.6"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -2335,6 +2335,11 @@ local function host_mdl3(chunk, entries, clock0)
   -- the load, and put back if MDL3 does not start.
   local taken = L.shim ~= nil and rawget(_G, "CowboyBingusModLoader") == L.shim
   if taken then rawset(_G, "CowboyBingusModLoader", nil) end
+  -- Same for the menus: MDL3 installs its own ModOptionsMenu / ModBindingsMenu only when none is
+  -- there, and Chef has set its own by now. With Chef's still in place MDL3's settings service
+  -- never comes up, so its menu shows a mod's on/off switch but none of its settings.
+  if rawget(_G, "ModOptionsMenu") ~= nil then rawset(_G, "ModOptionsMenu", nil) end
+  if rawget(_G, "ModBindingsMenu") ~= nil then rawset(_G, "ModBindingsMenu", nil) end
   local ran, why = xpcall(chunk, function(e)
     return tostring(e) .. "\n" .. (type(debug) == "table" and debug.traceback("", 2) or "")
   end)
