@@ -2,3 +2,10 @@
 boot.luac
 dist/
 __pycache__/
+
+# Reference packages (MDL3, ChefBridge) and anything extracted from them: closed
+# source, never committed.
+ref/
+
+# Local agent workspace data.
+.workbuddy/
