@@ -906,6 +906,8 @@ for _, e in ipairs(__boot_mod_loader.mods) do
     local chunk = loadstring(src, '@' .. e.name)
     if src:find('MDL_REFUSE', 1, true) then
       MDL_REFUSED = (MDL_REFUSED or 0) + 1
+    elseif e.name == rawget(_G, 'MDL3_OFF') then
+      MDL_OFF = (MDL_OFF or 0) + 1
     else
       local ran, val = pcall(chunk)
       package.loaded[e.name] = ran and (val == nil and true or val) or false
@@ -918,7 +920,7 @@ function init()
   MDL_INITS = (MDL_INITS or 0) + 1
   -- dev.33 installs its menus inside init, only when the slot is free
   MDL_MENU = rawget(_G, 'ModOptionsMenu') == nil and 'free' or 'blocked'
-  if MDL_MENU == 'free' then rawset(_G, 'ModOptionsMenu', { api = 1, version = 3, mdl = true }) end
+  if MDL_MENU == 'free' then rawset(_G, 'ModOptionsMenu', { api = 1, version = 3, mdl = true, register_option = function() return true end, ready = function() return true end }) end
 end
 function update(dt) MDL_UPS = (MDL_UPS or 0) + 1 end
 function render() MDL_RENDERS = (MDL_RENDERS or 0) + 1 end
@@ -982,7 +984,7 @@ def check_routing(source, failures):
             log = log[log.rindex("== boot-mod-loader-"):]
             here = form != "none"
             ok(("routing: chef (3 mod(s) for Chef, 7 for MDL3, 0 for Boot Mod Loader)" if here else
-                "routing: chef (9 mod(s) for Chef, 0 for MDL3, 1 for Boot Mod Loader)") in log,
+                "routing: chef (10 mod(s) for Chef, 0 for MDL3, 0 for Boot Mod Loader)") in log,
                "routing (%s): the log says who gets what: %r" % (form, [l for l in log.splitlines() if "routing" in l]), failures)
             ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("NARROW_RAN") is True,
                "routing (%s): BML runs no mod itself; Chef started the plain and the chef one" % form, failures)
@@ -997,20 +999,20 @@ def check_routing(source, failures):
             if here:
                 ok(starts == "mods/test/alpha,mods/test/narrow,mods/test/broken:failed",
                    "routing (%s): Chef starts the rest, not the five marked for MDL3: %r" % (form, starts), failures)
-                ok(rt.eval("MDL_STARTS") == MDL_GROUP and rt.eval("REFUSED_RAN") == 1 and rt.eval("MDL_REFUSED") == 1 and rt.eval("MDL_RAN") == 1 and rt.eval("DUAL_RAN") is True
+                ok(rt.eval("MDL_STARTS") == MDL_GROUP and rt.eval("REFUSED_RAN") is None and rt.eval("MDL_REFUSED") == 1 and rt.eval("MDL_RAN") == 1 and rt.eval("DUAL_RAN") is True
                    and rt.eval("NAMED_RAN") is True and rt.eval("CTX_RAN") is True and rt.eval("BIG_RAN") is True
                    and rt.eval("HUB_RAN") == 1,
                    "routing (%s): MDL3 starts exactly the marked ones: %r" % (form, rt.eval("MDL_STARTS")), failures)
                 ok(rt.eval("MDL_MENU") == "free" and rt.eval("ModOptionsMenu.mdl") is True,
                    "routing (%s): MDL3 finds the menus free and installs its own" % form, failures)
-                ok(rt.eval("MDL_HOST") == "MDL" and rt.eval("CowboyBingusModLoader.provider") == "MDL"
+                ok(rt.eval("MDL_HOST") == "MDL" and rt.eval("type(CowboyBingusModLoader.revision) == 'string'") is True
                    and rt.eval("package.loaded['mods/test/mdl']") is not None,
                    "routing (%s): MDL3 took the addon registry and ran the marked mods: %r"
                    % (form, rt.eval("MDL_HOST")), failures)
                 ok("mods/test/named: MDL3 (names MDL3)" in log and "mods/test/big: MDL3 (over Chef's 4 MB)" in log
                    and "mods/test/ctx: MDL3 (takes MDL3's context)" in log and "mods/test/mdl: MDL3 (asks for it)" in log
                    and "mods/test/hub: MDL3 (reads the Data Hub)" in log
-                   and "mods/test/refused: MDL3 did not start it; Boot Mod Loader runs it" in log,
+                   and "mods/test/refused: MDL3 did not start it; declare it as bml" in log,
                    "routing (%s): the log names why each one went to MDL3" % form, failures)
                 ok("both markers; MDL3 has it" in log, "routing (%s): a mod with both markers is named" % form, failures)
                 with open(cfg_path, encoding="utf-8") as fh:
@@ -1025,8 +1027,7 @@ def check_routing(source, failures):
                 rt.execute("ORDER = '' shutdown()")
                 ok(rt.eval("ORDER") == "mdl3,chef,game,", "routing (%s): shutdown: MDL3, Chef, then the game's: %r" % (form, rt.eval("ORDER")), failures)
             else:
-                ok("MDL3 not deployed: mods/test/mdl, mods/test/dual, mods/test/named, mods/test/ctx, mods/test/hub, mods/test/refused (Chef starts them)" in log
-                   and "over Chef's 4 MB: mods/test/big (Boot Mod Loader runs them)" in log,
+                ok("MDL3 not deployed" in log and "over Chef's 4 MB" in log,
                    "routing (%s): without MDL3 the log names them" % form, failures)
                 ok(rt.eval("MDL_RAN") == 1 and rt.eval("BIG_RAN") is True and rt.eval("HUB_RAN") == 1 and rt.eval("MDL_STARTS") is None,
                    "routing (%s): without MDL3 Chef starts them, once: %r" % (form, starts), failures)
@@ -1081,18 +1082,18 @@ def check_review_fixes(source, failures):
             log = log[log.rindex("== boot-mod-loader-"):]
             big = rt.eval("BIG_RAN")
             if case == "chef_fails":
-                ok("falling back to the 0.13 path" in log and rt.eval("ALPHA_RAN") == 1
-                   and rt.eval("MDL_RAN") == 1 and big is True and rt.eval("MDL_STARTS") is None
-                   and rt.eval("CowboyBingusModLoader.modules['mods/test/mdl']") is None,
-                   "Chef failure: every mod runs once on the 0.13 path, no stale marks", failures)
+                ok("Chef Shared Loader did not come up" in log and rt.eval("ALPHA_RAN") is None
+                   and rt.eval("MDL_RAN") == 1 and big is True and "mods/test/mdl" in (rt.eval("MDL_STARTS") or "")
+                   and rt.eval("CowboyBingusModLoader.modules['mods/test/mdl']") == "loaded",
+                   "Chef failure: only MDL3 and explicitly-BML mods run, no BML fallback", failures)
             elif case == "mdl3_compile":
                 ok("MDL3 does not compile" in log and "MDL3 not deployed" not in log
-                   and "over Chef's 4 MB: mods/test/big" in log and big is True and rt.eval("MDL_RAN") == 1,
-                   "MDL3 boot does not compile: named as such, big mod runs here", failures)
+                   and "over Chef's 4 MB" in log and big is True and rt.eval("MDL_RAN") == 1,
+                   "MDL3 boot does not compile: named as such, big mod goes to Chef with a hint", failures)
             elif case == "mdl3_fails":
-                ok("MDL3: FAILED" in log and "Boot Mod Loader runs the mods it was given" in log
-                   and rt.eval("MDL_RAN") == 1 and big is True and rt.eval("ModOptionsMenu.window") is None,
-                   "MDL3 throws: Chef's menus are restored and its mods run here", failures)
+                ok("MDL3: FAILED" in log and "declare it as bml" in log
+                   and rt.eval("MDL_RAN") is None and big is None and rt.eval("ModOptionsMenu.window") is None,
+                   "MDL3 throws: Chef's menus are restored, undeclared mods stay off", failures)
             elif case == "no_mdl_mods":
                 ok(rt.eval("MDL_INITS") == 1 and rt.eval("MDL_STARTS") == ""
                    and rt.eval("debug.getinfo(update, 'S').source") == "@mods/mdl3/mdl3"
@@ -1101,6 +1102,71 @@ def check_review_fixes(source, failures):
             else:
                 ok(rt.eval("MDL_INITS") == 1 and "guest boot " not in log,
                    "two MDL3 guest boots: only the highest one is hosted", failures)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+DISPATCH_MODS = {
+    1: ("mods/test/plain", "-- HD2-Addon: mods/test/plain\nPLAIN_RAN = (PLAIN_RAN or 0) + 1\n", 2),
+    2: ("mods/test/chefmod", CHEF_MODS[2][1], 2),
+    3: ("mods/test/mdl", "-- HD2-Addon: mods/test/mdl\n-- HD2-Requires: mdl3\nMDL_RAN = (MDL_RAN or 0) + 1\n", 2),
+    # explicitly declares BML; uses BML's own globals while Chef is deployed
+    4: ("mods/test/bml", "-- HD2-Addon: mods/test/bml\n-- HD2-Requires: boot-mod-loader\n"
+                        "BML_RAN = (BML_RAN or 0) + 1\n"
+                        "BML_API_OK = type(CowboyBingusModLoader) == 'table' "
+                        "and type(CowboyBingusModLoader.open_log) == 'function'\n"
+                        "MOM_OK = type(ModOptionsMenu) == 'table' "
+                        "and type(ModOptionsMenu.register_option) == 'function'\n", 2),
+    # switched off in MDL3's own menu: no loader should start it on its behalf
+    5: ("mods/test/off", "-- HD2-Addon: mods/test/off\n-- HD2-Requires: mdl3\nOFF_RAN = (OFF_RAN or 0) + 1\n", 2),
+}
+
+
+def check_pure_dispatch(source, failures):
+    """BML as a pure distributor: only a mod that declares BML (in its header or in the player's
+    route file) runs here. Everything else goes to Chef or MDL3, even when a loader fails."""
+    from build import write_module
+    for case in ("declared_bml", "route_bml", "route_mdl3", "mdl3_off"):
+        root = tempfile.mkdtemp(prefix="bootloader_dispatch_")
+        try:
+            fake_game(root, DISPATCH_MODS)
+            data = os.path.join(root, "game", "data")
+            write_module(data, "mods/chef_shared_loader/core_1", CHEF_LIVE, archive="9ba626afa44a3aa3.patch_6")
+            write_module(data, "boot", MDL3_FAKE, archive="9ba626afa44a3aa3.patch_11")
+            cfg = os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader_routes.cfg")
+            if case == "route_bml":
+                open(cfg, "w", encoding="utf-8").write("# my routes\nmods/test/plain = bml\n")
+            elif case == "route_mdl3":
+                open(cfg, "w", encoding="utf-8").write("mods/test/plain = mdl3\n")
+            rt = runtime(root, CHECKED)
+            rt.execute("stingray.Application.can_get = function() return false end")
+            if case == "mdl3_off": rt.execute("MDL3_OFF = 'mods/test/off'")
+            rt.eval("loadstring")(source, "=boot")()
+            rt.execute("init()")
+            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+                       encoding="utf-8").read()
+            log = log[log.rindex("== boot-mod-loader-"):]
+            starts = rt.eval("CHEF_STARTS") or ""
+            mdl_starts = rt.eval("MDL_STARTS") or ""
+            if case == "declared_bml":
+                ok(rt.eval("BML_RAN") == 1 and rt.eval("BML_API_OK") is True and rt.eval("MOM_OK") is True
+                   and "mods/test/bml" not in starts and "mods/test/bml" not in mdl_starts
+                   and rt.eval("PLAIN_RAN") == 1 and rt.eval("MDL_RAN") == 1
+                   and "mods/test/bml: Boot Mod Loader (asks for it)" in log
+                   and rt.eval("type(CowboyBingusModLoader.revision) == 'string'") is True,
+                   "declared BML: runs here with BML's API and menus; others go to Chef/MDL3", failures)
+            elif case == "route_bml":
+                ok("route: mods/test/plain -> bml" in log and "Boot Mod Loader (route file)" in log
+                   and rt.eval("PLAIN_RAN") == 1 and "mods/test/plain" not in starts,
+                   "route file bml: the player's declaration wins over the default", failures)
+            elif case == "route_mdl3":
+                ok("route: mods/test/plain -> mdl3" in log and "mods/test/plain" in mdl_starts
+                   and "mods/test/plain" not in starts,
+                   "route file mdl3: a plain mod can be declared for MDL3", failures)
+            else:
+                ok(rt.eval("OFF_RAN") is None and rt.eval("MDL_OFF") == 1 and rt.eval("MDL_RAN") == 1
+                   and "mods/test/off: MDL3 did not start it; declare it as bml" in log,
+                   "mod switched off in MDL3: no loader starts it on its behalf", failures)
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
@@ -1199,6 +1265,7 @@ def check(source):
         check_bml_legacy(source, failures)
         check_routing(source, failures)
         check_review_fixes(source, failures)
+        check_pure_dispatch(source, failures)
     finally:
         shutil.rmtree(root, ignore_errors=True)
         shutil.rmtree(other, ignore_errors=True)

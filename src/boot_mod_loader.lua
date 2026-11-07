@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.10"
+local MARKER = "boot-mod-loader-0.15.0"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -298,9 +298,9 @@ if rawget(_G, "CowboyBingusModLoader") == nil then
       if L.started_done then L.hook_shutdown() end                       -- registered late: hook now
     end,
   })
-  -- Ours: taken out of _G while MDL3 loads, because MDL3 takes the addon registry only when no
-  -- other loader's table is there (its log: "coordinator: another loader owns the addon registry",
-  -- and then it starts nothing). See host_mdl3.
+  -- Ours: taken out of _G while MDL3 loads. Its log shows that with another loader's table
+  -- present it writes "coordinator: another loader owns the addon registry" and starts nothing.
+  -- See host_mdl3.
   L.shim = rawget(_G, "CowboyBingusModLoader")
 end
 
@@ -2070,6 +2070,36 @@ local function for_chef(source)
   return ok and chef_only
 end
 
+-- A mod that explicitly asks for Boot Mod Loader: "-- HD2-Requires: boot-mod-loader" or
+-- "-- @loader bml". Only these mods run here when another loader is deployed; everything else is
+-- handed to Chef or MDL3.
+local function is_bml(source)
+  local head = string.sub(source, 1, 1200)
+  return string.find(head, "\n%-%- HD2%-Requires: boot%-mod%-loader[%s>]") ~= nil
+      or string.find(head, "\n%-%- @loader bml[%s]") ~= nil
+end
+
+-- The player can declare the same thing outside a mod's header (third-party mods cannot be
+-- edited): one "mods/author/name = bml|chef|mdl3" per line in
+-- %APPDATA%\Arrowhead\Helldivers2\boot_mod_loader_routes.cfg. A declared route wins over every
+-- automatic rule.
+local function player_routes()
+  local out = {}
+  local ok, dir = pcall(os.getenv, "APPDATA")
+  if not ok or type(dir) ~= "string" then return out end
+  local okf, file = pcall(io.open, dir .. "\\Arrowhead\\Helldivers2\\boot_mod_loader_routes.cfg", "rb")
+  if not okf or file == nil then return out end
+  for line in file:lines() do
+    local name, where = string.match(line, "^%s*([%w_/]+)%s*=%s*(%w+)%s*$")
+    if name ~= nil and (where == "bml" or where == "chef" or where == "mdl3") then
+      out[name] = where
+      say("route: " .. name .. " -> " .. where .. " (boot_mod_loader_routes.cfg)")
+    end
+  end
+  file:close()
+  return out
+end
+
 -- Why a mod is MDL3's, or nil. Five answers, in this order:
 --   * its header asks for it: "-- HD2-Requires: mdl3" (MDL3 ignores a requirement it does not know,
 --     Chef reads it as unmet) or "-- @loader mdl";
@@ -2106,14 +2136,14 @@ local function read_source(entry)
   return source
 end
 
-local function run(entry)
+local function run(entry, force)
   local source, why = read_source(entry)
   if source == nil then
     entry.state = "unreadable"
     say(entry.name .. ": " .. why)
     return
   end
-  if for_chef(source) then
+  if not force and for_chef(source) then
     entry.state = "for chef"
     L.for_chef[#L.for_chef + 1] = entry
     return
@@ -2349,15 +2379,13 @@ local function host_mdl3(chunk, entries, clock0)
   mdl_takeover_hint()
   local saved = {}
   for _, k in ipairs(CALLBACKS) do saved[k] = rawget(_G, k) end
-  -- MDL3 takes the addon registry only when it is free: with ours in the way it logs "coordinator:
-  -- another loader owns the addon registry" and starts nothing at all. So ours is taken out for
-  -- the load, and put back if MDL3 does not start.
+  -- Observed from MDL3's own log: with another loader's registry in the globals it writes
+  -- "coordinator: another loader owns the addon registry" and starts no addon. So ours is taken
+  -- out for the load, and put back afterwards.
   local taken = L.shim ~= nil and rawget(_G, "CowboyBingusModLoader") == L.shim
   if taken then rawset(_G, "CowboyBingusModLoader", nil) end
-  -- Same for the menus: MDL3 installs its own ModOptionsMenu / ModBindingsMenu only when none is
-  -- there, and Chef has set its own by now. With Chef's still in place MDL3's settings service
-  -- never comes up, so its menu shows a mod's on/off switch but none of its settings. Save them:
-  -- if MDL3 does not start, Chef's menus have to be put back.
+  -- Same for the menus: MDL3's menus are observed only when those globals are empty, and Chef
+  -- has set its own by now. Save them: if MDL3 does not start, Chef's menus have to be put back.
   local chef_mom, chef_mbm = rawget(_G, "ModOptionsMenu"), rawget(_G, "ModBindingsMenu")
   rawset(_G, "ModOptionsMenu", nil)
   rawset(_G, "ModBindingsMenu", nil)
@@ -2378,8 +2406,14 @@ local function host_mdl3(chunk, entries, clock0)
     if taken then rawset(_G, "CowboyBingusModLoader", L.shim) end
     rawset(_G, "ModOptionsMenu", chef_mom)
     rawset(_G, "ModBindingsMenu", chef_mbm)
-    say("MDL3: FAILED: " .. tostring(why) .. "; Boot Mod Loader runs the mods it was given")
-    for _, e in ipairs(entries) do run(e) end
+    say("MDL3: FAILED: " .. tostring(why) .. "; only explicitly BML mods run here")
+    for _, e in ipairs(entries) do
+      if e.bml_explicit then
+        run(e, true)
+      else
+        say(e.name .. ": declare it as bml in boot_mod_loader_routes.cfg if it should run")
+      end
+    end
     return
   end
   if g.fns.init ~= nil then
@@ -2426,12 +2460,18 @@ local function host_mdl3(chunk, entries, clock0)
     say(string.format("MDL3 runs %d of %d mod(s) as one link (%s) in %.0f ms",
                       started, #entries, table.concat(kept, ", "), (os.clock() - clock0) * 1000))
   end
-  -- A mod MDL3 did not start (it refused it, its sandbox refused it, or it was off) runs here
-  -- instead, in the game's own environment. That is the only road left for a mod over Chef's
-  -- 4 MB, and the one Battlefield 5 Kill Feedback needed.
+  -- The registry belongs to the mods this loader runs, not to MDL3: put ours back before anything
+  -- else starts (the fallback mods, the guest boots, mods reading open_log lazily).
+  if taken then rawset(_G, "CowboyBingusModLoader", L.shim) end
+  -- BML is a distributor. A mod MDL3 did not start only runs here when the mod or the player's
+  -- route file explicitly asked for BML; otherwise it stays off, with a hint on how to declare it.
   for _, e in ipairs(left) do
-    say(e.name .. ": MDL3 did not start it; Boot Mod Loader runs it")
-    run(e)
+    if e.bml_explicit then
+      say(e.name .. ": MDL3 did not start it; Boot Mod Loader runs it (explicitly declared)")
+      run(e, true)
+    else
+      say(e.name .. ": MDL3 did not start it; declare it as bml in boot_mod_loader_routes.cfg if it should run")
+    end
   end
 end
 
@@ -2439,7 +2479,11 @@ end
 -- need MDL3 go to it, the rest to Chef — and Chef is handed the game with those names already
 -- marked in its table, so it leaves them alone.
 local function start_chef(list, guests, clock0)
-  local mdl = {}
+  -- Pure distribution: an explicit declaration (in the mod's header or in the player's route
+  -- file) decides. A mod that declares BML runs here; one that declares MDL3 goes to MDL3;
+  -- everything else goes to Chef. No mod is started here just because a loader failed.
+  local routes = player_routes()
+  local bml, mdl = {}, {}
   for _, e in ipairs(list) do
     local source, why = read_source(e)
     if source == nil then
@@ -2447,15 +2491,32 @@ local function start_chef(list, guests, clock0)
       say(e.name .. ": " .. why)
     else
       e.over_chef_limit = #source > CHEF_MAX_LUA
-      local mdl_why = is_mdl(source)
-      if mdl_why ~= nil then
-        e.state = "mdl"
-        mdl[#mdl + 1] = e
-        say(e.name .. ": MDL3 (" .. mdl_why .. ")")
-        if for_chef(source) then say(e.name .. ": both markers; MDL3 has it") end
-      else
+      e.bml_explicit = false
+      local forced = routes[e.name]
+      if forced == "bml" or (forced == nil and is_bml(source)) then
+        e.state = "bml"
+        e.bml_explicit = true
+        bml[#bml + 1] = e
+        say(e.name .. ": Boot Mod Loader (" .. (forced and "route file" or "asks for it") .. ")")
+      elseif forced == "chef" then
         e.state = "for chef"
         L.for_chef[#L.for_chef + 1] = e
+        say(e.name .. ": Chef (route file)")
+      elseif forced == "mdl3" then
+        e.state = "mdl"
+        mdl[#mdl + 1] = e
+        say(e.name .. ": MDL3 (route file)")
+      else
+        local mdl_why = is_mdl(source)
+        if mdl_why ~= nil then
+          e.state = "mdl"
+          mdl[#mdl + 1] = e
+          say(e.name .. ": MDL3 (" .. mdl_why .. ")")
+          if for_chef(source) then say(e.name .. ": both markers; MDL3 has it") end
+        else
+          e.state = "for chef"
+          L.for_chef[#L.for_chef + 1] = e
+        end
       end
     end
   end
@@ -2474,75 +2535,76 @@ local function start_chef(list, guests, clock0)
       if chunk == nil then mdl_problem = "does not compile: " .. tostring(err) end
     end
   end
-  -- If MDL3 cannot run, its mods go to Chef -- except the ones Chef cannot read at all (over its
-  -- 4 MB Lua limit). Those run here, in the game's own environment, or they run nowhere.
-  local bml_owns = {}
   if mdl_problem ~= nil then
-    local to_chef, to_bml = {}, {}
     for _, e in ipairs(mdl) do
-      if e.over_chef_limit then
-        bml_owns[#bml_owns + 1] = e
-        to_bml[#to_bml + 1] = e.name
-      else
-        e.state = "for chef"
-        L.for_chef[#L.for_chef + 1] = e
-        to_chef[#to_chef + 1] = e.name
-      end
-    end
-    say("MDL3 " .. mdl_problem .. ": " .. table.concat(to_chef, ", ") .. " (Chef starts them)")
-    if #to_bml > 0 then
-      say("over Chef's 4 MB: " .. table.concat(to_bml, ", ") .. " (Boot Mod Loader runs them)")
+      e.state = "for chef"
+      L.for_chef[#L.for_chef + 1] = e
+      say(e.name .. ": MDL3 " .. mdl_problem .. "; Chef starts it"
+          .. (e.over_chef_limit and " (over Chef's 4 MB: declare it as bml in boot_mod_loader_routes.cfg)" or ""))
     end
     mdl = {}
   end
-
   local shim = rawget(_G, "CowboyBingusModLoader")
-  for _, e in ipairs(mdl) do
-    if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = "loading" end
+  for _, group in ipairs({ mdl, bml }) do
+    for _, e in ipairs(group) do
+      if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = "loading" end
+    end
   end
-  for _, e in ipairs(bml_owns) do
-    if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = "loading" end
+  -- Reserve the BML group too: MDL3 scans every deployed addon itself, so 'false' (reserved, not
+  -- started yet) keeps it from starting a mod that BML will run a moment later.
+  local P = rawget(_G, "package")
+  if type(P) == "table" and type(P.loaded) == "table" then
+    for _, e in ipairs(bml) do
+      if P.loaded[e.name] == nil then P.loaded[e.name] = false end
+    end
   end
   -- Chef sets its own menus only where none is; the settings of these mods go to its F9. Save
-  -- ours: if Chef fails, the 0.13 path needs them back.
+  -- ours: if Chef fails, the explicitly-BML mods still need them.
   local our_mom, our_mbm = L.mom, L.mbm
   rawset(_G, "ModOptionsMenu", nil)
   rawset(_G, "ModBindingsMenu", nil)
   say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3, %d for Boot Mod Loader)",
-                    #L.for_chef, #mdl, #bml_owns))
+                    #L.for_chef, #mdl, #bml))
   local handed, why = pcall(L.hand_off, true)
   if not handed then say("hand-off to Chef Shared Loader: " .. tostring(why)) end
   local chef_up = handed and rawget(_G, "ChefSharedLoader") ~= nil
-  if not chef_up then
-    -- Chef broken: no package.loaded marks were written and no lists were set aside. Give the
-    -- 0.13 path a clean slate so it starts every mod itself.
+  if chef_up then
+    -- After Chef starts a mod there is no entry for it in the game's package.loaded; MDL3's
+    -- only "already started" test is that table, so without this it runs every mod Chef just
+    -- ran a second time. The marker is true: Chef ran them.
+    local P = rawget(_G, "package")
+    if type(P) == "table" and type(P.loaded) == "table" then
+      for _, e in ipairs(L.for_chef) do
+        if P.loaded[e.name] == nil then P.loaded[e.name] = true end
+      end
+    end
+    -- lists an earlier 0.13 launch wrote are set aside: no mod registers with them in this mode
+    pcall(MOM.sweep, list)
+  else
     rawset(_G, "ModOptionsMenu", our_mom)
     rawset(_G, "ModBindingsMenu", our_mbm)
-    for _, e in ipairs(list) do e.state = nil end
-    for i = 1, #L.for_chef do L.for_chef[i] = nil end
     if type(shim) == "table" and type(shim.modules) == "table" then
-      for _, e in ipairs(mdl) do shim.modules[e.name] = nil end
-      for _, e in ipairs(bml_owns) do shim.modules[e.name] = nil end
+      for _, group in ipairs({ mdl, bml }) do
+        for _, e in ipairs(group) do shim.modules[e.name] = nil end
+      end
     end
-    say("Chef Shared Loader did not come up; falling back to the 0.13 path")
-    flush()
-    return false
-  end
-  -- Chef 1.5.1 starts a mod in its own space and leaves no entry in package.loaded (its own
-  -- require marks only its look-alike). MDL3's only "already started" test is package.loaded, so
-  -- without this it runs every mod Chef just ran a second time. The marker is true: Chef ran them.
-  local P = rawget(_G, "package")
-  if type(P) == "table" and type(P.loaded) == "table" then
-    for _, e in ipairs(L.for_chef) do
-      if P.loaded[e.name] == nil then P.loaded[e.name] = true end
+    -- Chef's mods did not run, but they still belong to Chef: reserve them (false, not true) so
+    -- MDL3 does not take them over as unstarted addons.
+    local P = rawget(_G, "package")
+    if type(P) == "table" and type(P.loaded) == "table" then
+      for _, e in ipairs(L.for_chef) do
+        if P.loaded[e.name] == nil then P.loaded[e.name] = false end
+      end
     end
+    say("Chef Shared Loader did not come up; its mods stay unstarted (declare them as bml or mdl3 in boot_mod_loader_routes.cfg)")
   end
-  -- lists an earlier 0.13 launch wrote are set aside: no mod registers with them in this mode
-  pcall(MOM.sweep, list)
   if chunk ~= nil then host_mdl3(chunk, mdl, clock0) end
-  for _, e in ipairs(bml_owns) do
-    say(e.name .. ": MDL3 unavailable; Boot Mod Loader runs it")
-    run(e)
+  for _, e in ipairs(bml) do
+    if type(P) == "table" and type(P.loaded) == "table" and P.loaded[e.name] == false then
+      P.loaded[e.name] = nil                    -- the reservation has done its job
+    end
+    say(e.name .. ": Boot Mod Loader runs it (explicitly declared)")
+    run(e, true)
   end
   for _, entry in ipairs(guests or {}) do
     if not entry.mdl3 then                      -- MDL3 ran as its own host; skip every copy of it
@@ -2576,10 +2638,9 @@ local function start()
   check_game_version()
   flush()
   if L.load_chef_core() ~= nil then
-    local ran, handled = pcall(start_chef, list, guests, clock0)
-    if not ran then say("chef routing failed: " .. tostring(handled)) flush() end
-    if ran and handled ~= false then return end
-    say("Chef routing fell back; starting mods on the 0.13 path")
+    local ran, why = pcall(start_chef, list, guests, clock0)
+    if not ran then say("chef routing failed: " .. tostring(why)) flush() end
+    return                                        -- pure distribution: no loader, no starting here
   end
   for _, entry in ipairs(list) do
     run(entry)

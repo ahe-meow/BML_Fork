@@ -116,3 +116,16 @@
 - MDL3 boot 读不了 / 编译失败 → 日志区分原因；>4 MB 的 mdl mod 由 BML 跑（Chef 不读），其余交 Chef。
 - 没有 mod 归 MDL3 时仍托管它（菜单、Data Hub）；多个 MDL3 guest boot 只启动最高的一个。
 - 未采纳与用户设计/实机目标冲突的意见：`L2096` 只认显式声明、`L2438` 收窄兜底、Chef 默认改回 BML 默认。
+
+## 12. 0.15.0：BML 改为纯分发（按 PR #1 审查 A 组意见）
+
+- 前提：BML 只跑**显式声明 BML** 的 mod；其余交给 Chef 或 MDL3。
+- 新增 `is_bml`：`-- HD2-Requires: boot-mod-loader` / `-- @loader bml`。
+- 新增玩家路由清单 `%APPDATA%\Arrowhead\Helldivers2\boot_mod_loader_routes.cfg`，
+  每行 `mods/author/name = bml|chef|mdl3`，优先于一切自动规则（第三方包不能改头部时用）。
+- 删掉三处隐式自跑：MDL3 没启动的 mod、MDL3 不可用/>4MB、Chef 失败回退 0.13 全量自跑；
+  Chef 失败时其 mods 用 `package.loaded[name]=false` 保留，MDL3 与显式 BML 组仍跑。
+- MDL3 成功后把全局 `CowboyBingusModLoader` 还给 BML（L2361）。
+- BML 组在 MDL3 托管前用 `package.loaded=false` 占位，避免被 MDL3 抢跑。
+- 合规：删 PR 内源码级表述、改 `.gitignore` 注释、提交带 DCO `Signed-off-by`、加 CI workflow。
+- 代价：BFV / Squad Ping 等无声明 mod 必须在路由清单里显式指定，否则不再自动兜底。

@@ -3,8 +3,8 @@ boot.luac
 dist/
 __pycache__/
 
-# Reference packages (MDL3, ChefBridge) and anything extracted from them: closed
-# source, never committed.
+# Local analysis material (third-party packages and extracts). Not part of this
+# repository and never committed; provenance is discussed on the pull request.
 ref/
 
 # Local agent workspace data.
