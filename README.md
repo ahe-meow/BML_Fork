@@ -103,7 +103,8 @@ Everything else goes to Chef Shared Loader.
    ModBindingsMenu by then, so both are cleared before MDL3 loads. MDL3 installs
    its own only with its **experimental takeover** on (its `MDL.cfg`,
    `ui.experimental_takeover`); a player who turned that off gets a list of
-   switches and no settings, so it is turned back on for it. MDL3 installs those
+   switches and no settings. That is the player's own setting: Boot Mod Loader
+   only writes a hint in its log and never edits `MDL.cfg`. MDL3 installs those
    menus inside its `init`, so Boot Mod Loader waits for that call to return
    before it decides: if MDL3 took them, its pages carry the settings; if not,
    Boot Mod Loader's are put back and what the mods register reaches HD2 Mod
@@ -116,9 +117,16 @@ Everything else goes to Chef Shared Loader.
    the chain below (per-mod timers such as Mod Lag Watchdog can name both).
 
 Without Chef's core the old path is unchanged: Boot Mod Loader starts every
-mod, and the mods that need Chef are named in the log and left. Without MDL3
-deployed, a mod marked for it is named in the log (`MDL3 not deployed: ...`)
-and Chef starts it.
+mod, and the mods that need Chef are named in the log and left. If Chef's core
+throws on the way up, the same 0.13 path takes over — no `package.loaded` marks
+and no `.stale` lists are left behind.
+
+If MDL3 is not deployed, its boot cannot be read, or its boot does not compile,
+the log names the reason (`MDL3 not deployed:` / `MDL3 unreadable:` /
+`MDL3 does not compile:`). Its small mods go to Chef; a mod over Chef's 4 MB
+limit runs here instead, since Chef would silently skip it. MDL3 is still
+hosted (one link, its menu and Data Hub available) when no mod was routed to
+it, and only the highest of several MDL3 guest boots is started.
 
 ### Mods made for Chef Shared Loader
 
@@ -145,7 +153,7 @@ unmet.
   runs its boot after Chef and marks what it ran.
 - A mod that names both loaders runs under MDL3, and the log says so
   (`both markers; MDL3 has it`).
-- The four rules are heuristics on a header, not a contract: the log prints the
+- The five rules are heuristics on a header, not a contract: the log prints the
   reason for every mod (`<name>: MDL3 (<reason>)`), so a wrong call is visible.
 
 Known limits, until checked in game:

@@ -91,7 +91,7 @@
 -- installs its own and the settings are in its F9 menu. Without Chef's core the
 -- path below (0.13.x) is unchanged.
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.14.9"
+local MARKER = "boot-mod-loader-0.14.10"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -2330,28 +2330,23 @@ end
 -- and the chain is put back. It starts an addon with require() and only reads the archive itself
 -- when that fails and package.loaded has no name for it, so every mod Chef started is left alone;
 -- the ones marked "loading" above are the only ones still to run.
--- MDL3 provides its ModOptionsMenu / ModBindingsMenu only with its "experimental takeover" on
--- (its source: f = ui.experimental_takeover ~= false and not safe_mode; menus only when f). A
--- player who once turned it off gets a menu of switches and no settings, hosted or not. Turn it
--- back on in its own config, which it reads when it starts.
-local function mdl_takeover_on()
+-- MDL3 installs its menus only when its "experimental takeover" is on; from outside that shows up
+-- as its menu holding on/off switches and no settings. It is the player's own setting, so it is
+-- never changed here: a hint in the log is all a loader should do about another program's config.
+local function mdl_takeover_hint()
   local ok, dir = pcall(os.getenv, "LOCALAPPDATA")
   if not ok or type(dir) ~= "string" then return end
-  local path = dir .. "\\MDL\\Helldivers2\\MDL.cfg"
-  local okf, file = pcall(io.open, path, "rb")
+  local okf, file = pcall(io.open, dir .. "\\MDL\\Helldivers2\\MDL.cfg", "rb")
   if not okf or file == nil then return end
   local text = file:read("*a")
   file:close()
-  if type(text) ~= "string" or not string.find(text, "experimental_takeover%s*=%s*false") then return end
-  local w = io.open(path, "wb")
-  if w == nil then return end
-  w:write((string.gsub(text, "experimental_takeover(%s*=%s*)false", "experimental_takeover%1true", 1)))
-  w:close()
-  say("MDL3: experimental_takeover was off; turned it on (its menus need it)")
+  if type(text) == "string" and string.find(text, "experimental_takeover%s*=%s*false") then
+    say("MDL3: its experimental takeover is off, so its menus will show no settings; enable it in MDL3's own options")
+  end
 end
 
 local function host_mdl3(chunk, entries, clock0)
-  mdl_takeover_on()
+  mdl_takeover_hint()
   local saved = {}
   for _, k in ipairs(CALLBACKS) do saved[k] = rawget(_G, k) end
   -- MDL3 takes the addon registry only when it is free: with ours in the way it logs "coordinator:
@@ -2361,9 +2356,11 @@ local function host_mdl3(chunk, entries, clock0)
   if taken then rawset(_G, "CowboyBingusModLoader", nil) end
   -- Same for the menus: MDL3 installs its own ModOptionsMenu / ModBindingsMenu only when none is
   -- there, and Chef has set its own by now. With Chef's still in place MDL3's settings service
-  -- never comes up, so its menu shows a mod's on/off switch but none of its settings.
-  if rawget(_G, "ModOptionsMenu") ~= nil then rawset(_G, "ModOptionsMenu", nil) end
-  if rawget(_G, "ModBindingsMenu") ~= nil then rawset(_G, "ModBindingsMenu", nil) end
+  -- never comes up, so its menu shows a mod's on/off switch but none of its settings. Save them:
+  -- if MDL3 does not start, Chef's menus have to be put back.
+  local chef_mom, chef_mbm = rawget(_G, "ModOptionsMenu"), rawget(_G, "ModBindingsMenu")
+  rawset(_G, "ModOptionsMenu", nil)
+  rawset(_G, "ModBindingsMenu", nil)
   local ran, why = xpcall(chunk, function(e)
     return tostring(e) .. "\n" .. (type(debug) == "table" and debug.traceback("", 2) or "")
   end)
@@ -2377,17 +2374,12 @@ local function host_mdl3(chunk, entries, clock0)
     end
     rawset(_G, k, saved[k])
   end
-  local function mark(state)
-    for _, e in ipairs(entries) do
-      e.state = state
-      local shim = L.shim
-      if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = state end
-    end
-  end
   if not ran then
     if taken then rawset(_G, "CowboyBingusModLoader", L.shim) end
-    mark("load failed")
-    say("MDL3: FAILED: " .. tostring(why))
+    rawset(_G, "ModOptionsMenu", chef_mom)
+    rawset(_G, "ModBindingsMenu", chef_mbm)
+    say("MDL3: FAILED: " .. tostring(why) .. "; Boot Mod Loader runs the mods it was given")
+    for _, e in ipairs(entries) do run(e) end
     return
   end
   if g.fns.init ~= nil then
@@ -2427,8 +2419,13 @@ local function host_mdl3(chunk, entries, clock0)
     end
     if type(L.shim) == "table" and type(L.shim.modules) == "table" then L.shim.modules[e.name] = e.state end
   end
-  say(string.format("MDL3 runs %d of %d mod(s) as one link (%s) in %.0f ms",
-                    started, #entries, table.concat(kept, ", "), (os.clock() - clock0) * 1000))
+  if #entries == 0 then
+    say(string.format("MDL3 runs as one link (%s) with no mods routed to it in %.0f ms",
+                      table.concat(kept, ", "), (os.clock() - clock0) * 1000))
+  else
+    say(string.format("MDL3 runs %d of %d mod(s) as one link (%s) in %.0f ms",
+                      started, #entries, table.concat(kept, ", "), (os.clock() - clock0) * 1000))
+  end
   -- A mod MDL3 did not start (it refused it, its sandbox refused it, or it was off) runs here
   -- instead, in the game's own environment. That is the only road left for a mod over Chef's
   -- 4 MB, and the one Battlefield 5 Kill Feedback needed.
@@ -2449,6 +2446,7 @@ local function start_chef(list, guests, clock0)
       e.state = "unreadable"
       say(e.name .. ": " .. why)
     else
+      e.over_chef_limit = #source > CHEF_MAX_LUA
       local mdl_why = is_mdl(source)
       if mdl_why ~= nil then
         e.state = "mdl"
@@ -2461,46 +2459,93 @@ local function start_chef(list, guests, clock0)
       end
     end
   end
-  local chunk = nil
-  if #mdl > 0 then
-    if L.mdl3 ~= nil then
-      local source = read_source(L.mdl3)
-      if source ~= nil then chunk = loadstring(source, "@mods/mdl3/mdl3") end
-    end
-    if chunk == nil then
-      local names = {}
-      for _, e in ipairs(mdl) do names[#names + 1] = e.name end
-      say("MDL3 not deployed: " .. table.concat(names, ", ") .. " (Chef starts them)")
-      for _, e in ipairs(mdl) do e.state = "for chef"; L.for_chef[#L.for_chef + 1] = e end
-      mdl = {}
+  -- MDL3 is hosted whenever its boot is readable, even with no mod routed to it: its menu and
+  -- the HD2 Data Hub are part of the game for a player who installed it.
+  local chunk, mdl_problem = nil, nil
+  if L.mdl3 == nil then
+    mdl_problem = "not deployed"
+  else
+    local source, why = read_source(L.mdl3)
+    if source == nil then
+      mdl_problem = "unreadable: " .. tostring(why)
+    else
+      local err
+      chunk, err = loadstring(source, "@mods/mdl3/mdl3")
+      if chunk == nil then mdl_problem = "does not compile: " .. tostring(err) end
     end
   end
+  -- If MDL3 cannot run, its mods go to Chef -- except the ones Chef cannot read at all (over its
+  -- 4 MB Lua limit). Those run here, in the game's own environment, or they run nowhere.
+  local bml_owns = {}
+  if mdl_problem ~= nil then
+    local to_chef, to_bml = {}, {}
+    for _, e in ipairs(mdl) do
+      if e.over_chef_limit then
+        bml_owns[#bml_owns + 1] = e
+        to_bml[#to_bml + 1] = e.name
+      else
+        e.state = "for chef"
+        L.for_chef[#L.for_chef + 1] = e
+        to_chef[#to_chef + 1] = e.name
+      end
+    end
+    say("MDL3 " .. mdl_problem .. ": " .. table.concat(to_chef, ", ") .. " (Chef starts them)")
+    if #to_bml > 0 then
+      say("over Chef's 4 MB: " .. table.concat(to_bml, ", ") .. " (Boot Mod Loader runs them)")
+    end
+    mdl = {}
+  end
+
   local shim = rawget(_G, "CowboyBingusModLoader")
   for _, e in ipairs(mdl) do
     if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = "loading" end
   end
-  -- Chef sets its own menus only where none is; the settings of these mods go to its F9
+  for _, e in ipairs(bml_owns) do
+    if type(shim) == "table" and type(shim.modules) == "table" then shim.modules[e.name] = "loading" end
+  end
+  -- Chef sets its own menus only where none is; the settings of these mods go to its F9. Save
+  -- ours: if Chef fails, the 0.13 path needs them back.
+  local our_mom, our_mbm = L.mom, L.mbm
   rawset(_G, "ModOptionsMenu", nil)
   rawset(_G, "ModBindingsMenu", nil)
-  -- lists an earlier 0.13 launch wrote are set aside: no mod registers with them in this mode
-  pcall(MOM.sweep, list)
-  say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3)", #L.for_chef, #mdl))
+  say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3, %d for Boot Mod Loader)",
+                    #L.for_chef, #mdl, #bml_owns))
   local handed, why = pcall(L.hand_off, true)
   if not handed then say("hand-off to Chef Shared Loader: " .. tostring(why)) end
+  local chef_up = handed and rawget(_G, "ChefSharedLoader") ~= nil
+  if not chef_up then
+    -- Chef broken: no package.loaded marks were written and no lists were set aside. Give the
+    -- 0.13 path a clean slate so it starts every mod itself.
+    rawset(_G, "ModOptionsMenu", our_mom)
+    rawset(_G, "ModBindingsMenu", our_mbm)
+    for _, e in ipairs(list) do e.state = nil end
+    for i = 1, #L.for_chef do L.for_chef[i] = nil end
+    if type(shim) == "table" and type(shim.modules) == "table" then
+      for _, e in ipairs(mdl) do shim.modules[e.name] = nil end
+      for _, e in ipairs(bml_owns) do shim.modules[e.name] = nil end
+    end
+    say("Chef Shared Loader did not come up; falling back to the 0.13 path")
+    flush()
+    return false
+  end
   -- Chef 1.5.1 starts a mod in its own space and leaves no entry in package.loaded (its own
   -- require marks only its look-alike). MDL3's only "already started" test is package.loaded, so
   -- without this it runs every mod Chef just ran a second time. The marker is true: Chef ran them.
-  if handed then
-    local P = rawget(_G, "package")
-    if type(P) == "table" and type(P.loaded) == "table" then
-      for _, e in ipairs(L.for_chef) do
-        if P.loaded[e.name] == nil then P.loaded[e.name] = true end
-      end
+  local P = rawget(_G, "package")
+  if type(P) == "table" and type(P.loaded) == "table" then
+    for _, e in ipairs(L.for_chef) do
+      if P.loaded[e.name] == nil then P.loaded[e.name] = true end
     end
   end
-  if #mdl > 0 and rawget(_G, "ChefSharedLoader") ~= nil then host_mdl3(chunk, mdl, clock0) end
+  -- lists an earlier 0.13 launch wrote are set aside: no mod registers with them in this mode
+  pcall(MOM.sweep, list)
+  if chunk ~= nil then host_mdl3(chunk, mdl, clock0) end
+  for _, e in ipairs(bml_owns) do
+    say(e.name .. ": MDL3 unavailable; Boot Mod Loader runs it")
+    run(e)
+  end
   for _, entry in ipairs(guests or {}) do
-    if entry ~= L.mdl3 then                      -- MDL3 already ran, as its own host
+    if not entry.mdl3 then                      -- MDL3 ran as its own host; skip every copy of it
       local ok2, w = pcall(run_guest, entry)
       if not ok2 then say("guest boot " .. tostring(entry.name) .. ": " .. tostring(w)) end
     end
@@ -2512,8 +2557,9 @@ local function start_chef(list, guests, clock0)
   L.started_done = true
   L.hook_guests()
   L.hook_shutdown()
-  L.hook_update()                                 -- serves a list or a settings file if one appeared
+  L.hook_update()
   flush()
+  return true
 end
 
 local function start()
@@ -2530,9 +2576,10 @@ local function start()
   check_game_version()
   flush()
   if L.load_chef_core() ~= nil then
-    local ran, why = pcall(start_chef, list, guests, clock0)
-    if not ran then say("chef routing failed: " .. tostring(why)) flush() end
-    return
+    local ran, handled = pcall(start_chef, list, guests, clock0)
+    if not ran then say("chef routing failed: " .. tostring(handled)) flush() end
+    if ran and handled ~= false then return end
+    say("Chef routing fell back; starting mods on the 0.13 path")
   end
   for _, entry in ipairs(list) do
     run(entry)

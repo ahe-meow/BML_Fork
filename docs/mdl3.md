@@ -107,3 +107,12 @@
 - 玩家把它关掉后，任何模式下（包括单独当 boot）都没有设置项；0.14.8 起托管前把 `MDL.cfg` 里的 `experimental_takeover` 改回 true。
 
 - 0.14.9：它把设置服务装在 **init** 里（日志 `starting MDL3 ...` 与 `mod options: ...` 同一段），所以回填 BML 菜单必须等它的 init 返回后再判断；0.14.7/0.14.8 在 init 之前回填，正好挡住了它。
+
+## 11. 0.14.10：按 PR #1 审查修失败路径（不改架构）
+
+- 不再改写玩家 `MDL.cfg`（`experimental_takeover` 只在日志里提示），避免覆盖玩家设置和 `wb` 截断风险。
+- Chef core 抛错 → 回退 0.13 全量自跑，且先清掉 `modules` 标记 / `L.for_chef` / 菜单清空。
+- MDL3 chunk 抛错 → 恢复注册表与 Chef 的两个菜单全局，其 mdl 组由 BML 跑，不再卡 `load failed`。
+- MDL3 boot 读不了 / 编译失败 → 日志区分原因；>4 MB 的 mdl mod 由 BML 跑（Chef 不读），其余交 Chef。
+- 没有 mod 归 MDL3 时仍托管它（菜单、Data Hub）；多个 MDL3 guest boot 只启动最高的一个。
+- 未采纳与用户设计/实机目标冲突的意见：`L2096` 只认显式声明、`L2438` 收窄兜底、Chef 默认改回 BML 默认。
