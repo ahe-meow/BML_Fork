@@ -1,4 +1,4 @@
-"""Boot Mod Loader on PUC Lua 5.1 against a fake game folder.
+"""BML_Fork on PUC Lua 5.1 against a fake game folder.
 
 The game since Steam build 25988413 runs PUC Lua 5.1 (no LuaJIT), so this runs
 on lupa.lua51, not on hd2fake (whose VM is the pre-patch LuaJIT). The fake game
@@ -289,7 +289,7 @@ def check_stale_lists(source, failures):
         put("mbm_oldcam_options.json")
         put("mom_gone_options.json")                     # a mod no longer installed, in the index
         put("mom_gone_settings.txt", "x=1\n#end\n")
-        put("boot_mod_loader_lists.txt", "mom_gone\n")
+        put("bml_fork_lists.txt", "mom_gone\n")
         put("mom_cam_options.json", '{"title": "old"}')  # registered again this game
         put("oldcam_options.json", '{"title": "ActionCam"}')   # the mod's own list: not the loader's
         rt = runtime(root, CHECKED)
@@ -308,9 +308,9 @@ def check_stale_lists(source, failures):
         ok(cam["title"] == "Cam Test" and "mom_cam_options.json.stale" not in here,
            "a list registered this game stays (written anew)", failures)
         ok("oldcam_options.json" in here, "a mod's own list is not touched", failures)
-        index = open(os.path.join(app, "boot_mod_loader_lists.txt"), encoding="utf-8").read().split()
+        index = open(os.path.join(app, "bml_fork_lists.txt"), encoding="utf-8").read().split()
         ok("mom_cam" in index and "mom_gone" in index, "the lists written are remembered in the index", failures)
-        log = open(os.path.join(app, "boot_mod_loader.log"), encoding="utf-8").read()
+        log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
         ok("mom_oldcam_options.json is no mod's this game: renamed .stale" in log, "the log says what was set aside", failures)
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -371,7 +371,7 @@ def check_options(source, failures):
         settings = os.path.join(app, "mom_cam_settings.txt")
         text = open(settings, encoding="utf-8").read()
         ok(text == "cam_on=true\ncam_mode=1\ncam_fov=4\n#end\n", "the settings file: %r" % text, failures)
-        log = open(os.path.join(app, "boot_mod_loader.log"), encoding="utf-8").read()
+        log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
         ok("2 value(s) carried over from Mod Options Menu" in log, "the carry-over is logged", failures)
         native_list = os.path.join(app, "mom_native_options.json")
         native_keys = [o["key"] for o in json.load(open(native_list, encoding="utf-8"))["options"]] \
@@ -492,7 +492,7 @@ def check_own_list(source, failures):
         for _ in range(3):
             rt.execute("update(0.4)")
         here = set(os.listdir(app))
-        log = open(os.path.join(app, "boot_mod_loader.log"), encoding="utf-8").read()
+        log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
         ok("mods/test/own: lists its settings in the settings window itself" in log and "mods/test/cam: lists" not in log,
            "the log names the mod the menus are hidden from", failures)
         ok(rt.eval("ModOptionsMenu.api") == 1 and rt.eval("ModBindingsMenu.api") == 1 and rt.eval("R1") is True
@@ -577,11 +577,11 @@ def check_second_launch(source, failures):
                 rt.execute("update(0.5)")
                 if between and i == 2:
                     between()
-            log = open(os.path.join(app, "boot_mod_loader.log"), encoding="utf-8").read()
-            return rt, log[log.rfind("== boot-mod-loader"):]
+            log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
+            return rt, log[log.rfind("== bml_fork"):]
 
         def notes():
-            p = os.path.join(app, "boot_mod_loader_native.txt")
+            p = os.path.join(app, "bml_fork_native.txt")
             return dict(l.split("\t") for l in open(p, encoding="utf-8").read().splitlines()
                         if l.count("\t") == 1) if os.path.exists(p) else {}
 
@@ -642,7 +642,7 @@ def check_no_menu_limits(source, failures):
                    "{ type = 'toggle', label = 'O', mod = 'Lots' }) end")
         r = rt.eval("tostring(ModOptionsMenu.register_option('lots.last', { type = 'toggle', label = 'L', mod = 'Lots' }))")
         rt.execute("update(1.5)")                      # the log is written out once a second
-        log = open(os.path.join(app, "boot_mod_loader.log"), encoding="utf-8").read()
+        log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
         ok(r == "false" and log.count("mod already has 1000 options -- registrations past this guard are refused") == 1,
            "past the guard: refused, logged once", failures)
     finally:
@@ -699,8 +699,8 @@ def check_translation_pack(source, failures):
             rt.execute("init()")
             for _ in range(3):
                 rt.execute("update(0.5)")
-            log = open(os.path.join(app, "boot_mod_loader.log"), encoding="utf-8").read()
-            return rt, log[log.rfind("== boot-mod-loader"):]
+            log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
+            return rt, log[log.rfind("== bml_fork"):]
 
         rt, log = launch()
         path = os.path.join(app, "native2_translations.json")
@@ -745,7 +745,7 @@ def check_guest_boot(source, failures):
         ok(rt.eval("GUEST_LOADS") is None, "guest: nothing before init", failures)
         first = rt.eval("table.concat({ init() }, ',')")
         rt.execute("init()")
-        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"), encoding="utf-8").read()
+        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"), encoding="utf-8").read()
         ok(first == "game,7", "guest: the game's init results still come back: %r" % first, failures)
         ok(rt.eval("GUEST_LOADS") == 1 and rt.eval("OLD_GUEST") is None, "guest: loaded once, the patch_5 copy", failures)
         ok(rt.eval("GUEST_INITS") == 1, "guest: its init called once, init twice", failures)
@@ -771,7 +771,7 @@ def check_guest_boot(source, failures):
         rt.execute("ORDER = '' shutdown()")
         ok(rt.eval("ORDER") == "guest,game,", "guest: shutdown, then the game's: %r" % rt.eval("ORDER"), failures)
         rt.execute("GUEST_FAIL = true for i = 1, 60 do update(0.016) end")
-        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"), encoding="utf-8").read()
+        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"), encoding="utf-8").read()
         ok(log.count("guest boot Tracker: update failed") == 5 and "guest boot Tracker: stopped for this launch after 50 errors" in log,
            "guest: five errors logged, stopped after 50", failures)
         ok(rt.eval("GUEST_UPDATES") == 51 and rt.eval("GAME_UPS") == 61,
@@ -803,7 +803,7 @@ CHEF_CORE_SRC = r"""
   local note = rawget(_G, 'ChefSharedLoaderHandoff')
   CHEF_FROM, CHEF_PHASE = note and note.from, note and note.phase
   local wants = {}
-  for _, e in ipairs(__boot_mod_loader.mods) do
+  for _, e in ipairs(__bml_fork.mods) do
     if e.state ~= 'loaded' and package.loaded[e.name] == nil then wants[#wants + 1] = e.name end
   end
   CHEF_STARTS = table.concat(wants, ',')
@@ -839,8 +839,8 @@ def check_bml_legacy(source, failures):
         rt.execute("GAME_UPS = 0 update = function() GAME_UPS = GAME_UPS + 1 end GAME_UPDATE = update")
         rt.eval("loadstring")(source, "=boot")()
         rt.execute("init()")
-        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"), encoding="utf-8").read()
-        log = log[log.rindex("== boot-mod-loader-"):]
+        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"), encoding="utf-8").read()
+        log = log[log.rindex("== bml_fork-"):]
         ok(rt.eval("NARROW_RAN") is None and rt.eval("DECLARED_RAN") is None and rt.eval("MODULAR_RAN") is None,
            "legacy: the mods made for Chef are not run here", failures)
         ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("COPES_QUIET") is True,
@@ -863,7 +863,7 @@ CHEF_LIVE = r"""
   local modules = rawget(_G, 'CowboyBingusModLoader')
   local arg = { own_log = function() end }
   local starts = {}
-  for _, e in ipairs(__boot_mod_loader.mods) do
+  for _, e in ipairs(__bml_fork.mods) do
     local marked = modules and modules.modules and modules.modules[e.name]
     if e.state ~= 'loaded' and marked == nil and package.loaded[e.name] == nil then
       local f = io.open(e.path, 'rb'); f:seek('set', e.at)
@@ -898,7 +898,7 @@ end
 rawset(_G, 'CowboyBingusModLoader', { version = 17, api = 1, modules = {}, provider = 'MDL' })
 MDL_HOST = 'MDL'
 local starts = {}
-for _, e in ipairs(__boot_mod_loader.mods) do
+for _, e in ipairs(__bml_fork.mods) do
   local ok2, v = pcall(require, e.name)
   if not ok2 and package.loaded[e.name] == nil then
     local f = io.open(e.path, 'rb'); f:seek('set', e.at)
@@ -979,12 +979,12 @@ def check_routing(source, failures):
             rt.execute("GAME_UPS = 0 update = function() GAME_UPS = GAME_UPS + 1 end GAME_UPDATE = update")
             rt.eval("loadstring")(source, "=boot")()
             rt.execute("init()")
-            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                        encoding="utf-8").read()
-            log = log[log.rindex("== boot-mod-loader-"):]
+            log = log[log.rindex("== bml_fork-"):]
             here = form != "none"
-            ok(("routing: chef (3 mod(s) for Chef, 7 for MDL3, 0 for Boot Mod Loader)" if here else
-                "routing: chef (10 mod(s) for Chef, 0 for MDL3, 0 for Boot Mod Loader)") in log,
+            ok(("routing: chef (3 mod(s) for Chef, 7 for MDL3, 0 for BML_Fork)" if here else
+                "routing: chef (10 mod(s) for Chef, 0 for MDL3, 0 for BML_Fork)") in log,
                "routing (%s): the log says who gets what: %r" % (form, [l for l in log.splitlines() if "routing" in l]), failures)
             ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("NARROW_RAN") is True,
                "routing (%s): BML runs no mod itself; Chef started the plain and the chef one" % form, failures)
@@ -1077,9 +1077,9 @@ def check_review_fixes(source, failures):
             if case == "mdl3_fails": rt.execute("MDL3_FAIL = true")
             rt.eval("loadstring")(source, "=boot")()
             rt.execute("init()")
-            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                        encoding="utf-8").read()
-            log = log[log.rindex("== boot-mod-loader-"):]
+            log = log[log.rindex("== bml_fork-"):]
             big = rt.eval("BIG_RAN")
             if case == "chef_fails":
                 ok("Chef Shared Loader did not come up" in log and rt.eval("ALPHA_RAN") is None
@@ -1111,7 +1111,7 @@ DISPATCH_MODS = {
     2: ("mods/test/chefmod", CHEF_MODS[2][1], 2),
     3: ("mods/test/mdl", "-- HD2-Addon: mods/test/mdl\n-- HD2-Requires: mdl3\nMDL_RAN = (MDL_RAN or 0) + 1\n", 2),
     # explicitly declares BML; uses BML's own globals while Chef is deployed
-    4: ("mods/test/bml", "-- HD2-Addon: mods/test/bml\n-- HD2-Requires: boot-mod-loader\n"
+    4: ("mods/test/bml", "-- HD2-Addon: mods/test/bml\n-- HD2-Requires: bml_fork\n"
                         "BML_RAN = (BML_RAN or 0) + 1\n"
                         "BML_API_OK = type(CowboyBingusModLoader) == 'table' "
                         "and type(CowboyBingusModLoader.open_log) == 'function'\n"
@@ -1135,7 +1135,7 @@ def check_pure_dispatch(source, failures):
             data = os.path.join(root, "game", "data")
             write_module(data, "mods/chef_shared_loader/core_1", CHEF_LIVE, archive="9ba626afa44a3aa3.patch_6")
             write_module(data, "boot", MDL3_FAKE, archive="9ba626afa44a3aa3.patch_11")
-            cfg = os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader_routes.cfg")
+            cfg = os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork_routes.cfg")
             if case == "route_bml":
                 open(cfg, "w", encoding="utf-8").write("# my routes\nmods/test/plain = bml\n")
             elif case == "route_mdl3":
@@ -1145,20 +1145,20 @@ def check_pure_dispatch(source, failures):
             if case == "mdl3_off": rt.execute("MDL3_OFF = 'mods/test/off'")
             rt.eval("loadstring")(source, "=boot")()
             rt.execute("init()")
-            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+            log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                        encoding="utf-8").read()
-            log = log[log.rindex("== boot-mod-loader-"):]
+            log = log[log.rindex("== bml_fork-"):]
             starts = rt.eval("CHEF_STARTS") or ""
             mdl_starts = rt.eval("MDL_STARTS") or ""
             if case == "declared_bml":
                 ok(rt.eval("BML_RAN") == 1 and rt.eval("BML_API_OK") is True and rt.eval("MOM_OK") is True
                    and "mods/test/bml" not in starts and "mods/test/bml" not in mdl_starts
                    and rt.eval("PLAIN_RAN") == 1 and rt.eval("MDL_RAN") == 1
-                   and "mods/test/bml: Boot Mod Loader (asks for it)" in log
+                   and "mods/test/bml: BML_Fork (asks for it)" in log
                    and rt.eval("type(CowboyBingusModLoader.revision) == 'string'") is True,
                    "declared BML: runs here with BML's API and menus; others go to Chef/MDL3", failures)
             elif case == "route_bml":
-                ok("route: mods/test/plain -> bml" in log and "Boot Mod Loader (route file)" in log
+                ok("route: mods/test/plain -> bml" in log and "BML_Fork (route file)" in log
                    and rt.eval("PLAIN_RAN") == 1 and "mods/test/plain" not in starts,
                    "route file bml: the player's declaration wins over the default", failures)
             elif case == "route_mdl3":
@@ -1172,7 +1172,7 @@ def check_pure_dispatch(source, failures):
             else:
                 ok(rt.eval("PAT_RAN") == 1 and "mods/patpatpatrick/demo" not in starts
                    and "mods/patpatpatrick/demo" not in mdl_starts
-                   and "mods/patpatpatrick/demo: Boot Mod Loader (listed here)" in log,
+                   and "mods/patpatpatrick/demo: BML_Fork (listed here)" in log,
                    "hard-coded list: any mods/patpatpatrick/ mod runs here, no declaration needed", failures)
         finally:
             shutil.rmtree(root, ignore_errors=True)
@@ -1229,13 +1229,13 @@ def check_mdl_mods(source, failures):
         fake_game(root, {1: MODS[1], 2: ("mods/test/mdlhud", MDL_HUD, 2), 3: ("guest_boot/MDL3", MDL3_GUEST, 2),
                          4: ("mods/test/module", NOT_MDL, 2), 5: ("mods/test/mdlbad", MDL_BAD, 2)})
         app = os.path.join(root, "appdata", "Arrowhead", "Helldivers2")
-        logf = os.path.join(app, "boot_mod_loader.log")
+        logf = os.path.join(app, "bml_fork.log")
 
         def put(name, text="{}"):
             open(os.path.join(app, name), "w", encoding="utf-8", newline="\n").write(text)
         put("mom_mods_test_mdlhud_options.json", '{"title": "Test HUD"}')   # the mod's list from an earlier game
         put("mom_gone_options.json")                                         # a mod no longer installed
-        put("boot_mod_loader_lists.txt", "mom_mods_test_mdlhud\nmom_gone\n")
+        put("bml_fork_lists.txt", "mom_mods_test_mdlhud\nmom_gone\n")
         rt = runtime(root, CHECKED)
         rt.execute("GAME_UPS = 0 update = function() GAME_UPS = GAME_UPS + 1 end GAME_UPDATE = update")
         rt.eval("loadstring")(source, "=boot")()
@@ -1283,7 +1283,7 @@ def check_mdl_mods(source, failures):
         ok(rt.eval("ORDER") == "mdl_shutdown,disable,cleanup,game,",
            "mdl: on_shutdown, on_disable, its cleanup, then the game's shutdown: %r" % rt.eval("ORDER"), failures)
         ok(rt.eval("MDLTEST_G") is None, "mdl: its ctx.global is cleared when it stops", failures)
-        saved = open(os.path.join(app, "boot_mod_loader_mdl_settings.txt"), encoding="utf-8").read()
+        saved = open(os.path.join(app, "bml_fork_mdl_settings.txt"), encoding="utf-8").read()
         ok(saved == "mods/test/mdlhud\tcount\tn\t1\nmods/test/mdlhud\tflag\tb\ttrue\nmods/test/mdlhud\ttext\ts\ta\\tb\\\\c\n",
            "mdl: ctx.settings written: %r" % saved, failures)
 
@@ -1295,7 +1295,7 @@ def check_mdl_mods(source, failures):
         ok(rt2.eval("MDL_SEEN_BEFORE") == 1, "mdl: ctx.settings come back the next launch: %r" % rt2.eval("MDL_SEEN_BEFORE"), failures)
         rt2.execute("MDL_FAIL = true ORDER = '' for i = 1, 60 do update(0.016) end")
         log = open(logf, encoding="utf-8").read()
-        tail = log[log.rfind("== boot-mod-loader-"):]
+        tail = log[log.rfind("== bml_fork-"):]
         ok(tail.count("MDL mod mods/test/mdlhud: on_update failed") == 5
            and "MDL mod mods/test/mdlhud: disabled for this launch after 50 errors" in tail,
            "mdl: five errors logged, disabled after 50", failures)
@@ -1325,9 +1325,9 @@ def check(source):
         ok(rt.eval("ALPHA_RAN") is None, "nothing runs before init", failures)
         first = rt.eval("table.concat({ init() }, ',')")
         rt.execute("init()")
-        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                    encoding="utf-8").read()
-        ok("== boot-mod-loader-" in log and "game boot: could not load" in log,
+        ok("== bml_fork-" in log and "game boot: could not load" in log,
            "the log opens with the marker and says the game boot (size_t 4 bytecode) did not load here", failures)
         ok(first == "game,7" and rt.eval("GAME_INITS") == 2, "init passes the game's own init through: %r" % first,
            failures)
@@ -1354,7 +1354,7 @@ def check(source):
             rt3 = runtime(later, "stingray:46805 437a3d445f9df7662b60086ac8ae3c65b5c95da6")
             rt3.eval("loadstring")(source, "=boot")()
             rt3.execute("init()")
-            log3 = open(os.path.join(later, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"), encoding="utf-8").read()
+            log3 = open(os.path.join(later, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"), encoding="utf-8").read()
             ok("(Steam build 26251122, 2026-10-29)" in log3 and "NOT THIS GAME VERSION" not in log3
                and rt3.eval("CowboyBingusModLoader.game.checked") is True,
                "build 26251122 (2026-10-29) is a checked build", failures)
@@ -1367,7 +1367,7 @@ def check(source):
             rt4 = runtime(latest, "stingray:47139 65ced4e456ae7032d4cd36088a367dbcf93994b1")
             rt4.eval("loadstring")(source, "=boot")()
             rt4.execute("init()")
-            log4 = open(os.path.join(latest, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"), encoding="utf-8").read()
+            log4 = open(os.path.join(latest, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"), encoding="utf-8").read()
             ok("(Steam build 26568081, 2026-11-11)" in log4 and "NOT THIS GAME VERSION" not in log4
                and rt4.eval("CowboyBingusModLoader.game.checked") is True,
                "build 26568081 (2026-11-11) is a checked build", failures)
@@ -1378,7 +1378,7 @@ def check(source):
         rt.execute("shutdown()")
         ok(rt.eval("ORDER") == "game,wrap,last,",
            "on_shutdown runs after the game and the wrapper: %r" % rt.eval("ORDER"), failures)
-        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+        log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                    encoding="utf-8").read()
         ok("on_shutdown 1: " in log and "swap failed" in log and "shutdown: 2 on_shutdown function(s) ran" in log,
            "a failing on_shutdown is logged and the next one runs", failures)
@@ -1395,7 +1395,7 @@ def check(source):
         rt2 = runtime(other, UNKNOWN)
         rt2.eval("loadstring")(source, "=boot")()
         rt2.execute("init()")
-        log2 = open(os.path.join(other, "appdata", "Arrowhead", "Helldivers2", "boot_mod_loader.log"),
+        log2 = open(os.path.join(other, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                     encoding="utf-8").read()
         ok(("NOT THIS GAME VERSION: %s" % UNKNOWN) in log2 and "started 1 of 1 mods" in log2
            and rt2.eval("CowboyBingusModLoader.game.checked") is False,
@@ -1424,7 +1424,7 @@ def check(source):
 def main():
     from build import built_source
     source = built_source(boot=b"\x1bLuaQ\x00\x01\x04\x04\x04\x08\x00" + b"\x00" * 32)
-    print("boot mod loader on Lua 5.1")
+    print("BML_Fork on Lua 5.1")
     failures = check(source)
     print("%d failure(s)" % len(failures))
     return 1 if failures else 0

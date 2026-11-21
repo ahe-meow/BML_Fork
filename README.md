@@ -1,4 +1,4 @@
-# Boot Mod Loader
+# BML_Fork
 
 Starts Lua mods on Helldivers 2 again after the game update of 2026-10-20
 (Steam build 25988413, the switch to Easy Anti-Cheat).
@@ -14,13 +14,13 @@ That update changed how the game runs Lua:
   source. `io`, `os`, `debug` and the engine's `stingray` API are all there, and
   the engine calls `init`, `update` and `render`.
 
-Boot Mod Loader replaces `boot`. It runs the game's own boot bytecode first,
+BML_Fork replaces `boot`. It runs the game's own boot bytecode first,
 unchanged.
 
 Since 0.15.0 it is a **pure distributor** when Chef Shared Loader is deployed:
-only mods that explicitly declare Boot Mod Loader run here; every other mod goes
+only mods that explicitly declare BML_Fork run here; every other mod goes
 to Chef or MDL3. Declarations live in the mod's header or in the player's
-`boot_mod_loader_routes.cfg`. With no Chef core it starts the mods itself, as
+`bml_fork_routes.cfg`. With no Chef core it starts the mods itself, as
 before.
 
 ## For players
@@ -33,14 +33,14 @@ For the settings of mods made for Mod Options Menu and Mod Bindings Menu, use
 **1.12.0 or newer**. In chef mode the settings of those mods are in Chef's own
 F9 menu instead; the window lists are not written then (see below).
 
-- Its log is `%APPDATA%\Arrowhead\Helldivers2\boot_mod_loader.log`. The log
+- Its log is `%APPDATA%\Arrowhead\Helldivers2\bml_fork.log`. The log
   lists the archives read, every mod found, who gets it (`routing: chef (...)`),
   and whether each mod loaded, did not compile, or failed (with a traceback).
 - **Only one mod can replace `boot`.** The game runs one `boot`: the one in the
-  highest patch. Boot Mod Loader's must be that one. Three cases are handled
+  highest patch. BML_Fork's must be that one. Three cases are handled
   (see "Other loaders and boots" below):
   - **Chef Shared Loader** may be installed beside it: it runs every mod that is
-    not for MDL3, and Boot Mod Loader hands it the game.
+    not for MDL3, and BML_Fork hands it the game.
   - **MDL3** may be installed beside it: it runs the mods that say they need it,
     as one link after Chef.
   - **A mod that ships its own `boot`** but is not a loader (Objective Tracker
@@ -61,7 +61,7 @@ F9 menu instead; the window lists are not written then (see below).
 - **Mods written for MDL** (IntegratedHUD-MDL, for example) run in Boot Mod
   Loader too, and their settings show in HD2 Mod Setting GUI when they use Mod
   Options Menu. They still need MDL3 for `MDL3.gui` and HD2 Data Hub's data;
-  HD2 Mod Quick Deploy deploys MDL3 as a guest beside Boot Mod Loader. See
+  HD2 Mod Quick Deploy deploys MDL3 as a guest beside BML_Fork. See
   "Mods written for MDL" below.
 - A mod written for LuaJIT does not run on this game, loader or not. That
   includes mods that use `ffi` to read game memory, mods that use the `bit`
@@ -69,15 +69,15 @@ F9 menu instead; the window lists are not written then (see below).
 
 ## Which loader runs which mods
 
-With Chef Shared Loader's core deployed, Boot Mod Loader is a **pure distributor**:
-it starts only mods that explicitly declare Boot Mod Loader. Every other mod is
+With Chef Shared Loader's core deployed, BML_Fork is a **pure distributor**:
+it starts only mods that explicitly declare BML_Fork. Every other mod is
 handed to Chef or MDL3. Nothing is started here just because a loader failed.
 
 | declaration, highest priority first | runs under |
 |---|---|
-| a line in `%APPDATA%\Arrowhead\Helldivers2\boot_mod_loader_routes.cfg`: `mods/author/name = bml\|chef\|mdl3` | the loader named in the file |
-| `mods/patpatpatrick/*` — hard-coded in the loader, so no header edit is needed | Boot Mod Loader |
-| `-- HD2-Requires: boot-mod-loader` or `-- @loader bml` in the first 1200 bytes | Boot Mod Loader |
+| a line in `%APPDATA%\Arrowhead\Helldivers2\bml_fork_routes.cfg`: `mods/author/name = bml\|chef\|mdl3` | the loader named in the file |
+| `mods/patpatpatrick/*` — hard-coded in the loader, so no header edit is needed | BML_Fork |
+| `-- HD2-Requires: bml_fork` or `-- @loader bml` in the first 1200 bytes | BML_Fork |
 | `-- HD2-Requires: mdl3` or `-- @loader mdl` in the first 1200 bytes | MDL3 |
 | no MDL3 marker (the table below) | Chef Shared Loader |
 
@@ -111,7 +111,7 @@ only things that decide.
    `CowboyBingusModLoader.modules`, so Chef leaves them alone. The BML group is
    also reserved with `package.loaded[name] = false` until it runs, so MDL3 does
    not take it over either.
-2. `ChefSharedLoaderHandoff = { from = "Boot Mod Loader <version>", phase = "init" }`
+2. `ChefSharedLoaderHandoff = { from = "BML_Fork <version>", phase = "init" }`
    is set and Chef's core runs from its archive. Chef leaves no entry in
    `package.loaded` for a mod it starts, which is MDL3's only "already started"
    test, so every mod handed to Chef is marked `true` afterwards.
@@ -127,12 +127,12 @@ only things that decide.
    exception.
 4. MDL3's menus appear only when it has its **experimental takeover** on
    (visible in its `MDL.cfg`, `ui.experimental_takeover`). That is the player's
-   own setting: Boot Mod Loader only writes a hint in its log and never edits
+   own setting: BML_Fork only writes a hint in its log and never edits
    `MDL.cfg`. MDL3 installs those menus during its `init`, so the check waits
    for that call to return. If MDL3 took them, its pages carry the settings; if
-   not, Boot Mod Loader's are put back and what the mods register reaches HD2
+   not, BML_Fork's are put back and what the mods register reaches HD2
    Mod Setting GUI instead of going nowhere.
-5. Mods that explicitly declared Boot Mod Loader run here, with BML's own
+5. Mods that explicitly declared BML_Fork run here, with BML's own
    `CowboyBingusModLoader`, menus and translation packs. BML's menus are not
    installed for Chef (its mods use its F9 menu); lists an earlier 0.13 launch
    left behind are renamed `.stale`.
@@ -140,10 +140,10 @@ only things that decide.
    Chef, then the chain below (per-mod timers such as Mod Lag Watchdog can name
    both).
 
-Without Chef's core the 0.13 path is unchanged: Boot Mod Loader starts every
+Without Chef's core the 0.13 path is unchanged: BML_Fork starts every
 mod, and mods that need Chef are named in the log and left. If Chef's core throws
 on the way up, its mods stay unstarted (`package.loaded[name] = false` reserves
-them) — MDL3 and the explicitly-BML mods still run, but Boot Mod Loader does
+them) — MDL3 and the explicitly-BML mods still run, but BML_Fork does
 not fall back to starting Chef's mods itself. The log points at the route file.
 
 If MDL3 is not deployed, its boot cannot be read, or its boot does not compile,
@@ -175,7 +175,7 @@ unmet.
 - MDL3 may be the game's `boot` or, as HD2 Mod Quick Deploy deploys it, a guest
   boot moved off the slot; both are found. Its `mdl_native_bridge.dll` must be
   installed, which its own `INSTALL.bat` does.
-- Its ESC menu and its own mod list are MDL3's business; Boot Mod Loader only
+- Its ESC menu and its own mod list are MDL3's business; BML_Fork only
   runs its boot after Chef and marks what it ran.
 - A mod that names both loaders runs under MDL3, and the log says so
   (`both markers; MDL3 has it`).
@@ -197,7 +197,7 @@ Deploy moves such a `boot` aside when it deploys. In the game folder's copy of
 the archive, it renames that row to `guest_boot/<mod name>` and adds the first
 line `-- HD2-Guest-Boot: <mod name>`; the mod's own files are not changed.
 
-Boot Mod Loader runs each guest boot after the mods have started:
+BML_Fork runs each guest boot after the mods have started:
 
 - the highest patch wins for a name; a guest is not counted with the mods;
 - its `init` is called; its `update`, `render` and `shutdown` run as its own
@@ -331,7 +331,7 @@ only when they find no menu, so with the loader they would never get one.
 When such a mod registers with a menu, and its source also writes the
 window's files itself (`<name>_options.json`, `<name>_settings.txt`,
 `"settings":"<name>_settings.txt"` and `#end`), the loader notes it in
-`boot_mod_loader_native.txt`. The first launch works through the menus as
+`bml_fork_native.txt`. The first launch works through the menus as
 before. From the next launch:
 
 - the menus are hidden from that mod;
@@ -357,7 +357,7 @@ list holds (a part of the id after a dot, written as a key: `actioncam.dist` ->
 `<name>_options.json.stale`, so the window shows only current settings. Its
 `_settings.txt` stays, so the values come back if the mod registers again. The
 candidates are the lists the loader wrote before (its index,
-`boot_mod_loader_lists.txt`) and the names of the mods loaded now. Where the
+`bml_fork_lists.txt`) and the names of the mods loaded now. Where the
 game's Lua has no `os.rename`, the list is emptied and marked
 `{"stale": true}` instead, which the window skips from 1.10.1.
 
@@ -380,7 +380,7 @@ loader does this once a launch for each mod with its own list:
    loader cannot find that file without listing a folder). The file is
    rewritten only when it changes.
 4. When the pack is gone, the file is removed. The loader removes only files
-   it wrote (its index, `boot_mod_loader_translations.txt`).
+   it wrote (its index, `bml_fork_translations.txt`).
 
 The window uses these translations from 1.12.0, after the mod's own ones.
 
@@ -422,10 +422,10 @@ game, so it is not in this repository. Take it from your own install:
     python tests/test_loader.py
     python build.py
 
-`build.py` writes `dist/Boot Mod Loader v<version>.zip`. Run
+`build.py` writes `dist/BML_Fork v<version>.zip`. Run
 `extract_boot.py` again after a game update. If the game's `boot` is
 unchanged, add the build's `Application.build_identifier()` to
-`CHECKED_BUILDS` in `src/boot_mod_loader.lua`.
+`CHECKED_BUILDS` in `src/bml_fork.lua`.
 
 `tests/test_loader.py` runs the loader on PUC Lua 5.1, the language the game
 runs, against a fake game folder of real patch archives. It covers these cases:

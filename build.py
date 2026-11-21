@@ -1,4 +1,4 @@
-"""Build Boot Mod Loader into a zip for a mod manager (HD2 Arsenal and others).
+"""Build BML_Fork into a zip for a mod manager (HD2 Arsenal and others).
 
     python tools/extract_boot.py "<...>/steamapps/common/Helldivers 2"   # once per game update
     python build.py                                                        # -> dist/
@@ -15,13 +15,13 @@ import sys
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SOURCE = os.path.join(HERE, "src", "boot_mod_loader.lua")
+SOURCE = os.path.join(HERE, "src", "bml_fork.lua")
 BOOT = os.path.join(HERE, "boot.luac")
 ICON = os.path.join(HERE, "icon.png")       # the mod manager's icon, 1024 px
 DIST = os.path.join(HERE, "dist")
-VERSION = "0.16.0"
-NAME = "Boot Mod Loader"
-FOLDER = "Boot Mod Loader"
+VERSION = "0.16.1"
+NAME = "BML_Fork"
+FOLDER = "BML_Fork"
 RESOURCE = "boot"
 LUA_SOURCE_FLAG = 2       # the payload is Lua source text (1 is bytecode)
 
@@ -37,18 +37,18 @@ SCAFFOLD = bytes.fromhex(
 MANIFEST = {
     "Version": 1,
     "Guid": "3f7a2c91-6d4e-4b58-9a0c-e15b82d4f6a7",
-    "IconPath": "Boot Mod Loader.png",
+    "IconPath": "BML_Fork.png",
     "Name": NAME,
     "Targets": ["Official"],              # the official game only (HD2 Mod Quick Deploy reads it)
     "Description": "Starts Lua mods (-- HD2-Addon:) on the game since its 2026-10-20 update; runs the game's own boot script unchanged.",
     "Options": [{
         "Name": "Loader",
-        "Description": "Log: %APPDATA%\\Arrowhead\\Helldivers2\\boot_mod_loader.log",
+        "Description": "Log: %APPDATA%\\Arrowhead\\Helldivers2\\bml_fork.log",
         "Include": [FOLDER],
     }],
 }
 
-README = """Boot Mod Loader v{version}
+README = """BML_Fork v{version}
 ========================
 
 Starts Lua mods on Helldivers 2 since its 2026-10-20 update (Steam build
@@ -56,7 +56,7 @@ Starts Lua mods on Helldivers 2 since its 2026-10-20 update (Steam build
 starts every Lua mod whose first line is "-- HD2-Addon: mods/<author>/<name>",
 found in the deployed data\\9ba626afa44a3aa3.patch_<n> archives. Each mod runs
 under pcall; failures are logged with a traceback to
-%APPDATA%\\Arrowhead\\Helldivers2\\boot_mod_loader.log.
+%APPDATA%\\Arrowhead\\Helldivers2\\bml_fork.log.
 
 Only one mod can replace `boot`: do not install another loader that does.
 Mods written for LuaJIT (ffi, bit, goto, jit) do not work on this game.
@@ -128,8 +128,8 @@ def built_source(boot=None):
         raise SystemExit("boot.luac is not Lua 5.1 bytecode")
     if template.count('"@ORIGINAL@"') != 1:
         raise SystemExit("the loader Lua has no single @ORIGINAL@ slot")
-    if ('local MARKER = "boot-mod-loader-%s"' % VERSION) not in template:
-        raise SystemExit("the loader Lua's MARKER is not boot-mod-loader-%s" % VERSION)
+    if ('local MARKER = "bml_fork-%s"' % VERSION) not in template:
+        raise SystemExit("the loader Lua's MARKER is not bml_fork-%s" % VERSION)
     for banned in ("require('ffi')", 'require("ffi")', "ffi.", "bit.", "jit.", "popen", "os.execute", "goto "):
         if banned in template:
             raise SystemExit("the loader names %r" % banned)

@@ -1,4 +1,4 @@
--- Boot Mod Loader (local; after the 2026-10-20 game update).
+-- BML_Fork (local; after the 2026-10-20 game update).
 --
 -- Steam build 25988413 runs PUC Lua 5.1 (no LuaJIT, no ffi) and dropped the
 -- script Bingus Shared Loader starts from, so no Lua mod runs. Lua VM Probe
@@ -12,7 +12,7 @@
 -- the highest patch number winning for a name, and runs each in turn under
 -- pcall, so one that fails does not stop the others. What it found, ran and
 -- what failed (with the traceback) goes to
--- %APPDATA%\Arrowhead\Helldivers2\boot_mod_loader.log.
+-- %APPDATA%\Arrowhead\Helldivers2\bml_fork.log.
 --
 -- For mods written against Bingus Shared Loader it sets
 -- _G.CowboyBingusModLoader with the parts that need no ffi: api 1, open_log
@@ -65,7 +65,7 @@
 -- all -- an older manager window had deployed without it -- so can_get's no
 -- was true. Reading it like the mods is kept: it needs nothing from the
 -- engine.) Chef then starts only what this loader did
--- not: it skips a mod __boot_mod_loader.mods lists as 'loaded', or one
+-- not: it skips a mod __bml_fork.mods lists as 'loaded', or one
 -- package.loaded holds (the mods that failed here get false there, so they
 -- do not fail twice). Its own ModOptionsMenu / ModBindingsMenu are set only
 -- where none is (read in 1.2.1's source), so the mods here keep the settings
@@ -79,8 +79,8 @@
 -- the chain, the order Chef keeps itself.
 --
 -- 0.15.0, pure distribution: when Chef's core is deployed this loader starts
--- only mods that explicitly declare Boot Mod Loader (header or the player's
--- boot_mod_loader_routes.cfg); every other mod goes to Chef or MDL3, even when
+-- only mods that explicitly declare BML_Fork (header or the player's
+-- bml_fork_routes.cfg); every other mod goes to Chef or MDL3, even when
 -- one of those loaders fails. The MDL3 group is marked "loading" in
 -- CowboyBingusModLoader.modules and in package.loaded before Chef loads, so it
 -- leaves those alone; MDL3's own boot -- found by its boot row or as a guest
@@ -101,7 +101,7 @@
 -- on_update(ctx, dt) each frame, and on_shutdown(ctx), on_disable(ctx) and the
 -- mod's cleanups when the game quits, ahead of the rest of the shutdown chain,
 -- last mod first. ctx is MDL's without what needs ffi or memory: id, settings
--- (kept in boot_mod_loader_mdl_settings.txt), log, set, on_cleanup, global,
+-- (kept in bml_fork_mdl_settings.txt), log, set, on_cleanup, global,
 -- loader, mdl. A mod's options registered through ModOptionsMenu go to the
 -- settings window as any other's. Each mod is a link of its own in update and
 -- shutdown, compiled under its name for Mod Lag Watchdog. An error is logged
@@ -110,7 +110,7 @@
 -- 878 s without an error, STOP at quit, a setting changed in the window applies
 -- at once).
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "boot-mod-loader-0.16.0"
+local MARKER = "bml_fork-0.16.1"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -123,9 +123,9 @@ local CHECKED_BUILDS = {
   ["stingray:47139 65ced4e456ae7032d4cd36088a367dbcf93994b1"] = "Steam build 26568081, 2026-11-11",
 }
 
-if rawget(_G, "__boot_mod_loader") ~= nil then return end
+if rawget(_G, "__bml_fork") ~= nil then return end
 local L = { mods = {}, log_lines = {}, started = false }
-rawset(_G, "__boot_mod_loader", L)
+rawset(_G, "__bml_fork", L)
 
 local ARCHIVE = "9ba626afa44a3aa3"
 local LUA_TYPE = "a14e8dfa2cd117e2"       -- murmur64("lua"), as hex
@@ -136,7 +136,7 @@ local GAP = 64                           -- stop after this many missing numbers
 local log_path = nil
 do
   local ok, dir = pcall(os.getenv, "APPDATA")
-  if ok and type(dir) == "string" then log_path = dir .. "\\Arrowhead\\Helldivers2\\boot_mod_loader.log" end
+  if ok and type(dir) == "string" then log_path = dir .. "\\Arrowhead\\Helldivers2\\bml_fork.log" end
 end
 local function say(text)
   L.log_lines[#L.log_lines + 1] = os.date("%H:%M:%S ") .. tostring(text)
@@ -666,9 +666,9 @@ end
 -- as a key, its own key the part after the first dot. If its own list has not
 -- appeared after MOM.WAIT seconds of play, the guess was wrong: the menus come
 -- back at once (such a mod asks every frame) and are never hidden from it
--- again. The notes are in boot_mod_loader_native.txt: "<name> TAB next | yes
+-- again. The notes are in bml_fork_native.txt: "<name> TAB next | yes
 -- | no", and "<name> TAB id TAB <list> TAB <id>" for the values.
-MOM.NOTES, MOM.WAIT, MOM.features, MOM.watch, MOM.menu_aware = "boot_mod_loader_native.txt", 10, {}, {}, {}
+MOM.NOTES, MOM.WAIT, MOM.features, MOM.watch, MOM.menu_aware = "bml_fork_native.txt", 10, {}, {}, {}
 
 function MOM.notes()
   if MOM.noted ~= nil then return MOM.noted end
@@ -796,9 +796,9 @@ end
 -- (saves\<hex>_user_settings.config), which the loader cannot find without
 -- listing a folder; the window, outside the game, reads it and takes "game"
 -- as that language. (0.10.0 guessed the tag from the texts' script.) Files
--- this loader wrote are listed in boot_mod_loader_translations.txt; one whose
+-- this loader wrote are listed in bml_fork_translations.txt; one whose
 -- pack is gone is removed.
-MOM.TRANSLATIONS, MOM.TRANSLATE_WAIT = "boot_mod_loader_translations.txt", 30
+MOM.TRANSLATIONS, MOM.TRANSLATE_WAIT = "bml_fork_translations.txt", 30
 
 -- JSON text -> Lua value (objects and arrays as tables; null as nil); nil on
 -- an error. Enough for the window's lists.
@@ -1306,9 +1306,9 @@ end
 -- aside: renamed <name>_options.json.stale. Its _settings.txt stays, so the
 -- values come back if the mod registers again (the list is written anew then).
 -- The loader cannot list a folder (io only), so the candidates are the names it
--- wrote before (its index, boot_mod_loader_lists.txt) and the names the mods
+-- wrote before (its index, bml_fork_lists.txt) and the names the mods
 -- loaded now would get. Nothing else in the folder is touched.
-MOM.INDEX = "boot_mod_loader_lists.txt"
+MOM.INDEX = "bml_fork_lists.txt"
 
 -- The names in the index, read once.
 function MOM.index()
@@ -1955,7 +1955,7 @@ local function check_game_version()
   for _, name in pairs(CHECKED_BUILDS) do names[#names + 1] = name end
   table.sort(names)
   say("NOT THIS GAME VERSION: " .. id .. ". The game's boot script embedded in this loader was checked on "
-    .. table.concat(names, " and ") .. " only. Mods still start; if the game misbehaves, update Boot Mod Loader.")
+    .. table.concat(names, " and ") .. " only. Mods still start; if the game misbehaves, update BML_Fork.")
 end
 
 -- ------------------------------------------------------------ mods written for MDL
@@ -1966,7 +1966,7 @@ local MDL = { mods = {}, store = {}, written = nil, file = nil, begun = false }
 L.mdl = MDL.mods
 do
   local ok, dir = pcall(os.getenv, "APPDATA")
-  if ok and type(dir) == "string" then MDL.file = dir .. "\\Arrowhead\\Helldivers2\\boot_mod_loader_mdl_settings.txt" end
+  if ok and type(dir) == "string" then MDL.file = dir .. "\\Arrowhead\\Helldivers2\\bml_fork_mdl_settings.txt" end
 end
 
 -- The settings MDL would keep for each mod (its ctx.settings), one line each:
@@ -2057,7 +2057,7 @@ end
 function MDL.ctx(m)
   local id = m.entry.name
   MDL.store[id] = MDL.store[id] or {}
-  local ctx = { id = id, settings = MDL.store[id], host = "Boot Mod Loader",
+  local ctx = { id = id, settings = MDL.store[id], host = "BML_Fork",
                 loader = rawget(_G, "CowboyBingusModLoader"), mdl = rawget(_G, "MDL") }
   function ctx.log(...)
     m.lines = m.lines + 1
@@ -2322,12 +2322,12 @@ local function for_chef(source)
   return ok and chef_only
 end
 
--- A mod that explicitly asks for Boot Mod Loader: "-- HD2-Requires: boot-mod-loader" or
+-- A mod that explicitly asks for BML_Fork: "-- HD2-Requires: bml_fork" or
 -- "-- @loader bml". Only these mods run here when another loader is deployed; everything else is
 -- handed to Chef or MDL3.
 local function is_bml(source)
   local head = string.sub(source, 1, 1200)
-  return string.find(head, "\n%-%- HD2%-Requires: boot%-mod%-loader[%s>]") ~= nil
+  return string.find(head, "\n%-%- HD2%-Requires: bml_fork[%s>]") ~= nil
       or string.find(head, "\n%-%- @loader bml[%s]") ~= nil
 end
 
@@ -2344,19 +2344,19 @@ end
 
 -- The player can declare the same thing outside a mod's header (third-party mods cannot be
 -- edited): one "mods/author/name = bml|chef|mdl3" per line in
--- %APPDATA%\Arrowhead\Helldivers2\boot_mod_loader_routes.cfg. A declared route wins over every
+-- %APPDATA%\Arrowhead\Helldivers2\bml_fork_routes.cfg. A declared route wins over every
 -- automatic rule.
 local function player_routes()
   local out = {}
   local ok, dir = pcall(os.getenv, "APPDATA")
   if not ok or type(dir) ~= "string" then return out end
-  local okf, file = pcall(io.open, dir .. "\\Arrowhead\\Helldivers2\\boot_mod_loader_routes.cfg", "rb")
+  local okf, file = pcall(io.open, dir .. "\\Arrowhead\\Helldivers2\\bml_fork_routes.cfg", "rb")
   if not okf or file == nil then return out end
   for line in file:lines() do
     local name, where = string.match(line, "^%s*([%w_/]+)%s*=%s*(%w+)%s*$")
     if name ~= nil and (where == "bml" or where == "chef" or where == "mdl3") then
       out[name] = where
-      say("route: " .. name .. " -> " .. where .. " (boot_mod_loader_routes.cfg)")
+      say("route: " .. name .. " -> " .. where .. " (bml_fork_routes.cfg)")
     end
   end
   file:close()
@@ -2588,7 +2588,7 @@ function L.hand_off(force)
       if failed and P.loaded[e.name] == nil then P.loaded[e.name] = false end
     end
   end
-  local from = "Boot Mod Loader " .. string.gsub(MARKER, "^boot%-mod%-loader%-", "")
+  local from = "BML_Fork " .. string.gsub(MARKER, "^boot%-mod%-loader%-", "")
   -- the callbacks off while it loads: it takes over no chain (see the top)
   local saved = {}
   for _, k in ipairs(CALLBACKS) do saved[k] = rawget(_G, k); rawset(_G, k, nil) end
@@ -2676,7 +2676,7 @@ local function host_mdl3(chunk, entries, clock0)
       if e.bml_explicit then
         run(e, true)
       else
-        say(e.name .. ": declare it as bml in boot_mod_loader_routes.cfg if it should run")
+        say(e.name .. ": declare it as bml in bml_fork_routes.cfg if it should run")
       end
     end
     return
@@ -2691,7 +2691,7 @@ local function host_mdl3(chunk, entries, clock0)
   if rawget(_G, "ModOptionsMenu") == nil then
     if L.mom ~= nil then rawset(_G, "ModOptionsMenu", L.mom) end
     if L.mbm ~= nil then rawset(_G, "ModBindingsMenu", L.mbm) end
-    say("MDL3 offers no menus of its own: Boot Mod Loader's serve the mods it starts")
+    say("MDL3 offers no menus of its own: BML_Fork's serve the mods it starts")
   end
   for _, k in ipairs({ "update", "render", "shutdown" }) do
     if g.fns[k] ~= nil then
@@ -2732,10 +2732,10 @@ local function host_mdl3(chunk, entries, clock0)
   -- route file explicitly asked for BML; otherwise it stays off, with a hint on how to declare it.
   for _, e in ipairs(left) do
     if e.bml_explicit then
-      say(e.name .. ": MDL3 did not start it; Boot Mod Loader runs it (explicitly declared)")
+      say(e.name .. ": MDL3 did not start it; BML_Fork runs it (explicitly declared)")
       run(e, true)
     else
-      say(e.name .. ": MDL3 did not start it; declare it as bml in boot_mod_loader_routes.cfg if it should run")
+      say(e.name .. ": MDL3 did not start it; declare it as bml in bml_fork_routes.cfg if it should run")
     end
   end
 end
@@ -2763,7 +2763,7 @@ local function start_chef(list, guests, clock0)
         e.state = "bml"
         e.bml_explicit = true
         bml[#bml + 1] = e
-        say(e.name .. ": Boot Mod Loader (" .. (forced and "route file"
+        say(e.name .. ": BML_Fork (" .. (forced and "route file"
             or (is_bml(source) and "asks for it" or "listed here")) .. ")")
       elseif forced == "chef" then
         e.state = "for chef"
@@ -2807,7 +2807,7 @@ local function start_chef(list, guests, clock0)
       e.state = "for chef"
       L.for_chef[#L.for_chef + 1] = e
       say(e.name .. ": MDL3 " .. mdl_problem .. "; Chef starts it"
-          .. (e.over_chef_limit and " (over Chef's 4 MB: declare it as bml in boot_mod_loader_routes.cfg)" or ""))
+          .. (e.over_chef_limit and " (over Chef's 4 MB: declare it as bml in bml_fork_routes.cfg)" or ""))
     end
     mdl = {}
   end
@@ -2830,7 +2830,7 @@ local function start_chef(list, guests, clock0)
   local our_mom, our_mbm = L.mom, L.mbm
   rawset(_G, "ModOptionsMenu", nil)
   rawset(_G, "ModBindingsMenu", nil)
-  say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3, %d for Boot Mod Loader)",
+  say(string.format("routing: chef (%d mod(s) for Chef, %d for MDL3, %d for BML_Fork)",
                     #L.for_chef, #mdl, #bml))
   local handed, why = pcall(L.hand_off, true)
   if not handed then say("hand-off to Chef Shared Loader: " .. tostring(why)) end
@@ -2863,14 +2863,14 @@ local function start_chef(list, guests, clock0)
         if P.loaded[e.name] == nil then P.loaded[e.name] = false end
       end
     end
-    say("Chef Shared Loader did not come up; its mods stay unstarted (declare them as bml or mdl3 in boot_mod_loader_routes.cfg)")
+    say("Chef Shared Loader did not come up; its mods stay unstarted (declare them as bml or mdl3 in bml_fork_routes.cfg)")
   end
   if chunk ~= nil then host_mdl3(chunk, mdl, clock0) end
   for _, e in ipairs(bml) do
     if type(P) == "table" and type(P.loaded) == "table" and P.loaded[e.name] == false then
       P.loaded[e.name] = nil                    -- the reservation has done its job
     end
-    say(e.name .. ": Boot Mod Loader runs it (explicitly declared)")
+    say(e.name .. ": BML_Fork runs it (explicitly declared)")
     run(e, true)
   end
   for _, entry in ipairs(guests or {}) do
