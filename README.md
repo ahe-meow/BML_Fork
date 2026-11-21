@@ -58,6 +58,11 @@ F9 menu instead; the window lists are not written then (see below).
   [HD2 Mod Setting GUI](https://github.com/pat-pat-patrick/hd2-mod-setting-gui),
   a small window outside the game, and a change applies in the game within a
   second. Settings you had made in Mod Options Menu carry over.
+- **Mods written for MDL** (IntegratedHUD-MDL, for example) run in Boot Mod
+  Loader too, and their settings show in HD2 Mod Setting GUI when they use Mod
+  Options Menu. They still need MDL3 for `MDL3.gui` and HD2 Data Hub's data;
+  HD2 Mod Quick Deploy deploys MDL3 as a guest beside Boot Mod Loader. See
+  "Mods written for MDL" below.
 - A mod written for LuaJIT does not run on this game, loader or not. That
   includes mods that use `ffi` to read game memory, mods that use the `bit`
   library, and mods that use `goto`. The log says which mods failed and why.
@@ -71,9 +76,13 @@ handed to Chef or MDL3. Nothing is started here just because a loader failed.
 | declaration, highest priority first | runs under |
 |---|---|
 | a line in `%APPDATA%\Arrowhead\Helldivers2\boot_mod_loader_routes.cfg`: `mods/author/name = bml\|chef\|mdl3` | the loader named in the file |
+| `mods/patpatpatrick/*` — hard-coded in the loader, so no header edit is needed | Boot Mod Loader |
 | `-- HD2-Requires: boot-mod-loader` or `-- @loader bml` in the first 1200 bytes | Boot Mod Loader |
 | `-- HD2-Requires: mdl3` or `-- @loader mdl` in the first 1200 bytes | MDL3 |
 | no MDL3 marker (the table below) | Chef Shared Loader |
+
+The hard-coded list is `BML_OWNED_PREFIXES` near `is_bml` in the source. A
+player's route (`= chef` or `= mdl3`) still overrides it.
 
 The route file is for third-party mods that cannot be edited. One mod per line,
 blank lines and `#` comments are ignored:
@@ -196,6 +205,39 @@ Boot Mod Loader runs each guest boot after the mods have started:
 - the first 5 errors are logged; after 50 the guest stops for that launch.
 
 Another mod manager can do the same: rename the row and add that first line.
+
+### Mods written for MDL
+
+A mod written for MDL (Mod Dynamic Loader 3) is declared like any other, with
+`-- HD2-Addon:` as its first line, but its script installs no callbacks. It
+returns its definition, which MDL's manager calls:
+
+    return { name = ..., version = ...,
+             on_enable = function(ctx) ... end,
+             on_update = function(ctx, dt) ... end,
+             on_disable = function(ctx) ... end,
+             on_shutdown = function(ctx) ... end }
+
+When MDL3 runs as a guest it starts no mod, so before 0.14.0 such a mod loaded
+here and then did nothing. Since 0.14.0, a script that returns a table with
+`on_enable` or `on_update` is run the way MDL runs it — when the mod is actually
+loaded here (declared BML, hard-coded in `BML_OWNED_PREFIXES`, or the 0.13 path
+with no Chef). A mod routed to Chef or MDL3 is run by that loader instead.
+
+- `on_enable(ctx)` on the first frame, after the guests, so `MDL3.gui` and
+  HD2 Data Hub's data are there by then;
+- `on_update(ctx, dt)` on every frame after that;
+- when the game quits, ahead of the rest of the shutdown chain and last mod
+  first: `on_shutdown(ctx)`, `on_disable(ctx)`, then the mod's cleanups.
+
+`ctx` holds the parts of MDL's that need no `ffi` or memory access: `id`,
+`settings` (kept in `%APPDATA%\Arrowhead\Helldivers2oot_mod_loader_mdl_settings.txt`),
+`log` (into this loader's log, 200 lines a mod each launch), `set`,
+`on_cleanup`, `global`, `loader` and `mdl`. Options registered through Mod
+Options Menu show in HD2 Mod Setting GUI like any other mod's. Each MDL mod is
+a link of its own in `update` and `shutdown`, under its own name. The first 5
+errors are logged; after 50 the mod is disabled for that launch. Checked with
+IntegratedHUD-MDL 0.9.4 in game.
 
 ## For mod authors
 
