@@ -110,7 +110,10 @@
 -- 878 s without an error, STOP at quit, a setting changed in the window applies
 -- at once).
 -- Plain Lua 5.1 only (no goto, bit or ffi)
-local MARKER = "bml_fork-0.16.1"
+-- Chef and MDL3 identify a competing loader by two hard-coded strings: this
+-- MARKER prefix and the __boot_mod_loader global. Both are kept so they still
+-- hand mods over correctly; every player-visible name is BML_Fork.
+local MARKER = "boot-mod-loader-0.16.2"
 local ORIGINAL = "@ORIGINAL@"            -- the game's boot bytecode, put in by the builder
 -- Builds whose boot script is byte for byte the one embedded here (extracted
 -- from each install and compared).
@@ -123,9 +126,10 @@ local CHECKED_BUILDS = {
   ["stingray:47139 65ced4e456ae7032d4cd36088a367dbcf93994b1"] = "Steam build 26568081, 2026-11-11",
 }
 
-if rawget(_G, "__bml_fork") ~= nil then return end
+if rawget(_G, "__boot_mod_loader") ~= nil then return end
 local L = { mods = {}, log_lines = {}, started = false }
-rawset(_G, "__bml_fork", L)
+rawset(_G, "__boot_mod_loader", L)   -- the name other loaders recognise
+rawset(_G, "__bml_fork", L)          -- this fork's own name, the same table
 
 local ARCHIVE = "9ba626afa44a3aa3"
 local LUA_TYPE = "a14e8dfa2cd117e2"       -- murmur64("lua"), as hex

@@ -578,7 +578,7 @@ def check_second_launch(source, failures):
                 if between and i == 2:
                     between()
             log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
-            return rt, log[log.rfind("== bml_fork"):]
+            return rt, log[log.rfind("== boot-mod-loader"):]
 
         def notes():
             p = os.path.join(app, "bml_fork_native.txt")
@@ -700,7 +700,7 @@ def check_translation_pack(source, failures):
             for _ in range(3):
                 rt.execute("update(0.5)")
             log = open(os.path.join(app, "bml_fork.log"), encoding="utf-8").read()
-            return rt, log[log.rfind("== bml_fork"):]
+            return rt, log[log.rfind("== boot-mod-loader"):]
 
         rt, log = launch()
         path = os.path.join(app, "native2_translations.json")
@@ -840,7 +840,7 @@ def check_bml_legacy(source, failures):
         rt.eval("loadstring")(source, "=boot")()
         rt.execute("init()")
         log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"), encoding="utf-8").read()
-        log = log[log.rindex("== bml_fork-"):]
+        log = log[log.rindex("== boot-mod-loader-"):]
         ok(rt.eval("NARROW_RAN") is None and rt.eval("DECLARED_RAN") is None and rt.eval("MODULAR_RAN") is None,
            "legacy: the mods made for Chef are not run here", failures)
         ok(rt.eval("ALPHA_RAN") == 1 and rt.eval("COPES_QUIET") is True,
@@ -981,7 +981,7 @@ def check_routing(source, failures):
             rt.execute("init()")
             log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                        encoding="utf-8").read()
-            log = log[log.rindex("== bml_fork-"):]
+            log = log[log.rindex("== boot-mod-loader-"):]
             here = form != "none"
             ok(("routing: chef (3 mod(s) for Chef, 7 for MDL3, 0 for BML_Fork)" if here else
                 "routing: chef (10 mod(s) for Chef, 0 for MDL3, 0 for BML_Fork)") in log,
@@ -1079,7 +1079,7 @@ def check_review_fixes(source, failures):
             rt.execute("init()")
             log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                        encoding="utf-8").read()
-            log = log[log.rindex("== bml_fork-"):]
+            log = log[log.rindex("== boot-mod-loader-"):]
             big = rt.eval("BIG_RAN")
             if case == "chef_fails":
                 ok("Chef Shared Loader did not come up" in log and rt.eval("ALPHA_RAN") is None
@@ -1147,7 +1147,7 @@ def check_pure_dispatch(source, failures):
             rt.execute("init()")
             log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                        encoding="utf-8").read()
-            log = log[log.rindex("== bml_fork-"):]
+            log = log[log.rindex("== boot-mod-loader-"):]
             starts = rt.eval("CHEF_STARTS") or ""
             mdl_starts = rt.eval("MDL_STARTS") or ""
             if case == "declared_bml":
@@ -1295,7 +1295,7 @@ def check_mdl_mods(source, failures):
         ok(rt2.eval("MDL_SEEN_BEFORE") == 1, "mdl: ctx.settings come back the next launch: %r" % rt2.eval("MDL_SEEN_BEFORE"), failures)
         rt2.execute("MDL_FAIL = true ORDER = '' for i = 1, 60 do update(0.016) end")
         log = open(logf, encoding="utf-8").read()
-        tail = log[log.rfind("== bml_fork-"):]
+        tail = log[log.rfind("== boot-mod-loader-"):]
         ok(tail.count("MDL mod mods/test/mdlhud: on_update failed") == 5
            and "MDL mod mods/test/mdlhud: disabled for this launch after 50 errors" in tail,
            "mdl: five errors logged, disabled after 50", failures)
@@ -1327,7 +1327,7 @@ def check(source):
         rt.execute("init()")
         log = open(os.path.join(root, "appdata", "Arrowhead", "Helldivers2", "bml_fork.log"),
                    encoding="utf-8").read()
-        ok("== bml_fork-" in log and "game boot: could not load" in log,
+        ok("== boot-mod-loader-" in log and "game boot: could not load" in log,
            "the log opens with the marker and says the game boot (size_t 4 bytecode) did not load here", failures)
         ok(first == "game,7" and rt.eval("GAME_INITS") == 2, "init passes the game's own init through: %r" % first,
            failures)

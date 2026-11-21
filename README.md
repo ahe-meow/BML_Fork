@@ -154,6 +154,16 @@ route file. MDL3 is still hosted (one link, its menu and Data Hub available)
 when no mod was routed to it, and only the highest of several MDL3 guest boots
 is started.
 
+### Interop identifiers
+
+Chef Shared Loader and MDL3 still recognise a competing loader by two
+hard-coded strings: `local MARKER = "boot-mod-loader-x.y.z"` and the
+`__boot_mod_loader` global. Both are kept, with `__bml_fork` as an alias for
+the same table, so the hand-off keeps working. Everything the player sees —
+the manifest name, log file, menus and hand-off label — is `BML_Fork`. If
+another loader's menu calls it "Bingus Shared Loader", that label comes from
+that loader's own classification table, not from this mod.
+
 ### Mods made for Chef Shared Loader
 
 A mod made only for [Chef Shared Loader](https://github.com/Th3chef/Chef-Shared-Loader)

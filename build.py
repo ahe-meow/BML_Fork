@@ -19,7 +19,7 @@ SOURCE = os.path.join(HERE, "src", "bml_fork.lua")
 BOOT = os.path.join(HERE, "boot.luac")
 ICON = os.path.join(HERE, "icon.png")       # the mod manager's icon, 1024 px
 DIST = os.path.join(HERE, "dist")
-VERSION = "0.16.1"
+VERSION = "0.16.2"
 NAME = "BML_Fork"
 FOLDER = "BML_Fork"
 RESOURCE = "boot"
@@ -128,8 +128,8 @@ def built_source(boot=None):
         raise SystemExit("boot.luac is not Lua 5.1 bytecode")
     if template.count('"@ORIGINAL@"') != 1:
         raise SystemExit("the loader Lua has no single @ORIGINAL@ slot")
-    if ('local MARKER = "bml_fork-%s"' % VERSION) not in template:
-        raise SystemExit("the loader Lua's MARKER is not bml_fork-%s" % VERSION)
+    if ('local MARKER = "boot-mod-loader-%s"' % VERSION) not in template:
+        raise SystemExit("the loader Lua's MARKER is not boot-mod-loader-%s" % VERSION)
     for banned in ("require('ffi')", 'require("ffi")', "ffi.", "bit.", "jit.", "popen", "os.execute", "goto "):
         if banned in template:
             raise SystemExit("the loader names %r" % banned)
